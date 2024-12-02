@@ -11,17 +11,17 @@ uploaded_file = st.file_uploader("Upload a CSV file", type=["csv"])
 
 if uploaded_file is not None:
     try:
-        # Load data
+        # Load and clean data
         data = pd.read_csv(uploaded_file)
-
-        # Preprocess the data
-        data.columns = data.columns.str.strip().str.upper()  # Standardize column names
-        data['EXPIRY DATE'] = pd.to_datetime(data['EXPIRY DATE'], errors='coerce', dayfirst=True)  # Convert to datetime
-        data['STRIKE'] = pd.to_numeric(data['STRIKE'], errors='coerce')  # Convert to numeric
-        data['LTP'] = data['LTP'].replace({',': ''}, regex=True)  # Remove commas
-        data['LTP'] = pd.to_numeric(data['LTP'], errors='coerce')  # Convert to numeric
-        data.dropna(subset=['EXPIRY DATE', 'STRIKE', 'LTP', 'OPTION TYPE'], inplace=True)  # Drop rows with missing values
-
+        data.columns = data.columns.str.strip().str.replace(r'\s+\n', '')  # Clean headers
+        data['EXPIRY DATE'] = pd.to_datetime(data['EXPIRY DATE'], format='%d-%b-%Y', errors='coerce')  # Parse dates
+        data['STRIKE'] = data['STRIKE'].replace({',': ''}, regex=True).astype(float)  # Remove commas, convert to float
+        data['LTP'] = data['LTP'].replace({',': ''}, regex=True).astype(float)  # Remove commas, convert to float
+        data['OPTION TYPE'] = data['OPTION TYPE'].str.strip().str.upper()  # Standardize option types
+        
+        # Drop rows with invalid data
+        data.dropna(subset=['EXPIRY DATE', 'STRIKE', 'LTP', 'OPTION TYPE'], inplace=True)
+        
         # Sidebar filters
         selected_expiry = st.sidebar.selectbox("Select Expiry Date", sorted(data['EXPIRY DATE'].dropna().unique()))
         selected_option_type = st.sidebar.selectbox("Select Option Type", data['OPTION TYPE'].dropna().unique())
@@ -34,10 +34,8 @@ if uploaded_file is not None:
             (data['STRIKE'] == selected_strike)
         ]
 
-        # Debugging output
         if filtered_data.empty:
             st.error("No data available for the selected criteria. Please verify your selection.")
-            st.write("Filtered Dataset:", data)  # Display the entire dataset for debugging
         else:
             st.write("Filtered Dataset:", filtered_data)
 
