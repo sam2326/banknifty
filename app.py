@@ -1,106 +1,93 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
+import hashlib
 from datetime import datetime
+import numpy as np
+from sklearn.linear_model import LinearRegression
 
-# Function to clean and adjust the format of the uploaded file
+# Function to load and clean data
 def load_and_clean_data(uploaded_file):
-    try:
-        # Read the uploaded CSV file
-        df = pd.read_csv(uploaded_file)
-        
-        # Automatically adjust and clean the data format
-        # Renaming columns for easier handling
-        df.rename(columns={
-            'Instrument': 'instrument',
-            'Symbol': 'stock_code',
-            'Expiry Date': 'expiry_date',
-            'Strike Price': 'strike_price',
-            'Option Type': 'option_type',
-            'Open Price': 'open',
-            'High Price': 'high',
-            'Low Price': 'low',
-            'Close Price': 'close',
-            'LTP': 'ltp',
-            'Settle Price': 'settle_price',
-            'Contracts': 'contracts',
-            'Value In Lakh': 'value_in_lakh',
-            'Open Interest': 'open_interest',
-            'Change in OI': 'change_in_oi'
-        }, inplace=True)
-        
-        # Ensuring the necessary columns exist
-        required_columns = ['stock_code', 'strike_price', 'ltp', 'contracts', 'value_in_lakh']
-        missing_columns = [col for col in required_columns if col not in df.columns]
-        if missing_columns:
-            st.error(f"Missing columns in uploaded file: {', '.join(missing_columns)}")
-            return None
+    # Read the uploaded CSV file
+    df = pd.read_csv(uploaded_file)
 
-        # Convert necessary columns to numeric for calculations
-        for col in ['strike_price', 'ltp', 'contracts', 'value_in_lakh']:
-            df[col] = pd.to_numeric(df[col], errors='coerce')
+    # Inspect the columns and data
+    st.write("Columns in uploaded file:")
+    st.write(df.columns)
 
-        # Drop rows with NaN in required columns
-        df.dropna(subset=required_columns, inplace=True)
+    st.write("First few rows of the data:")
+    st.write(df.head())
 
-        return df
-    except Exception as e:
-        st.error(f"Error while processing the file: {str(e)}")
+    # Perform cleaning and adjust based on available columns
+    # Check for necessary columns and rename if needed
+    required_columns = ['datetime', 'symbol', 'strikePrice', 'ltp', 'contracts', 'valueInLakh']
+
+    # Check if required columns are present
+    missing_columns = [col for col in required_columns if col not in df.columns]
+    
+    if missing_columns:
+        st.error(f"Missing columns in uploaded file: {', '.join(missing_columns)}")
         return None
 
-# Function to predict LTP and calculate profit or loss
-def predict_ltp(df):
-    # Simulated prediction logic (placeholder)
-    df['predicted_ltp'] = df['ltp'] * np.random.uniform(0.98, 1.02, len(df))
+    # Proceed with cleaning if all required columns are present
+    df['datetime'] = pd.to_datetime(df['datetime'], errors='coerce')
+    df['strikePrice'] = pd.to_numeric(df['strikePrice'], errors='coerce')
+    df['ltp'] = pd.to_numeric(df['ltp'], errors='coerce')
+    df['contracts'] = pd.to_numeric(df['contracts'], errors='coerce')
+    df['valueInLakh'] = pd.to_numeric(df['valueInLakh'], errors='coerce')
 
-    # Calculate profit or loss
-    df['profit_loss'] = df['predicted_ltp'] - df['ltp']
+    # Drop rows with missing or invalid data
+    df.dropna(subset=['datetime', 'ltp', 'strikePrice'], inplace=True)
 
-    # Add a recommendation column
-    df['recommendation'] = np.where(df['profit_loss'] > 0, 'Buy', 'Don’t Buy')
-    
+    # Filter and clean data as needed
     return df
 
-# Streamlit app interface
-st.title("BankNifty Stock Prediction App")
-st.write("Upload a CSV file containing BankNifty options data.")
+# Function to predict future LTP (dummy model for illustration)
+def predict_ltp(df):
+    # Create a linear regression model for LTP prediction based on strike price
+    model = LinearRegression()
+    model.fit(df[['strikePrice']], df['ltp'])
 
-# File upload
-uploaded_file = st.file_uploader("Upload your CSV file", type=["csv"])
+    # Predict LTP for the next data point (for example, predicting for the next strike price)
+    predicted_ltp = model.predict([[df['strikePrice'].max() + 10]])  # Example prediction for a higher strike price
 
-if uploaded_file is not None:
-    # Load and clean the data
-    df = load_and_clean_data(uploaded_file)
+    return predicted_ltp[0]
 
-    if df is not None:
-        st.write("### Cleaned Data")
-        st.dataframe(df)
+# Main function to run the Streamlit app
+def main():
+    st.title('Bank Nifty Option Prediction App')
 
-        # Predict and display results
-        df = predict_ltp(df)
-        st.write("### Predictions")
-        st.dataframe(df[['stock_code', 'strike_price', 'ltp', 'predicted_ltp', 'profit_loss', 'recommendation']])
-        
-        # Option to download the results
-        csv = df.to_csv(index=False)
-        st.download_button(
-            label="Download Predictions as CSV",
-            data=csv,
-            file_name='banknifty_predictions.csv',
-            mime='text/csv'
-        )
+    # Upload CSV
+    uploaded_file = st.file_uploader("Upload CSV", type=['csv'])
 
-        # Input fields for user-specific strike price and LTP
-        st.write("### Analyze Specific Strike Price")
-        strike_price_input = st.number_input("Enter Strike Price:", value=0.0)
-        current_ltp_input = st.number_input("Enter Current LTP:", value=0.0)
+    if uploaded_file is not None:
+        df = load_and_clean_data(uploaded_file)
 
-        if strike_price_input > 0 and current_ltp_input > 0:
-            # Filter data for user input and calculate potential profit/loss
-            specific_df = df[df['strike_price'] == strike_price_input]
-            if not specific_df.empty:
-                specific_df['input_profit_loss'] = specific_df['predicted_ltp'] - current_ltp_input
-                st.write(f"### Analysis for Strike Price {strike_price_input}")
-                st.dataframe(specific_df[['stock_code', 'ltp', 'predicted_ltp', 'input_profit_loss', 'recommendation']])
+        if df is not None:
+            # Display cleaned data
+            st.write("Cleaned Data Preview:")
+            st.write(df.head())
+
+            # Allow the user to select strike price and LTP
+            strike_price = st.selectbox("Select Strike Price", df['strikePrice'].unique())
+            selected_data = df[df['strikePrice'] == strike_price]
+
+            current_ltp = selected_data['ltp'].iloc[0] if not selected_data.empty else 0
+            st.write(f"Current LTP for strike {strike_price}: {current_ltp}")
+
+            # Get prediction
+            predicted_ltp = predict_ltp(df)
+            st.write(f"Predicted LTP for strike {strike_price}: {predicted_ltp}")
+
+            # Calculate profit or loss
+            profit_or_loss = predicted_ltp - current_ltp
+            if profit_or_loss > 0:
+                recommendation = "Profit - Buy"
             else:
-                st.warning("No data found for the entered strike price.")
+                recommendation = "Loss - Don't Buy"
+
+            st.write(f"Predicted Profit/Loss: {profit_or_loss}")
+            st.write(f"Recommendation: {recommendation}")
+
+# Run the app
+if __name__ == "__main__":
+    main()
