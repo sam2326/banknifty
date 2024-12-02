@@ -40,9 +40,17 @@ if uploaded_file:
             else:
                 st.write("'EXPIRY DATE' column parsed successfully.")
         
-        # Handle 'LTP' column
-        if 'LTP' not in data.columns:
-            st.error("The 'LTP' column is missing in the uploaded file!")
+        # Clean the 'LTP' column: remove commas and handle invalid values like '-'
+        if 'LTP' in data.columns:
+            # Remove commas and convert to numeric, invalid parsing will result in NaN
+            data['LTP'] = data['LTP'].replace({',': ''}, regex=True)
+            data['LTP'] = pd.to_numeric(data['LTP'], errors='coerce')
+            
+            # Handle rows where 'LTP' is NaN (due to invalid values)
+            data = data.dropna(subset=['LTP'])
+        
+        if 'LTP' not in data.columns or data['LTP'].isnull().all():
+            st.error("The 'LTP' column is missing or invalid in the uploaded file!")
             st.stop()
 
         # Display the processed data
