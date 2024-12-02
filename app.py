@@ -1,90 +1,97 @@
 import streamlit as st
-import requests
-from datetime import datetime, timedelta
+import pandas as pd
+import numpy as np
+from sklearn.linear_model import LinearRegression
+from sklearn.preprocessing import StandardScaler
+import datetime
+import matplotlib.pyplot as plt
+import seaborn as sns
 
-# Constants
-BASE_URL = "https://api.icicidirect.com/breezeapi/api/v1/"
-API_KEY = "%659227P~g54$16430J5W&2I449991ab"
-SECRET_KEY = "607Yr~3k0308933gk54iyW5962m66+67"
-AUTH_CODE = "49518548"
+# Function to load and clean CSV
+def load_and_clean_data(uploaded_file):
+    # Read the CSV file
+    df = pd.read_csv(uploaded_file)
+    
+    # Clean and format data (basic cleaning)
+    df.columns = df.columns.str.replace(' ', '_').str.lower()  # Standardize column names
+    df = df.dropna()  # Drop rows with missing data
+    
+    # Filter and clean the data to show only necessary columns (modify as per your data structure)
+    df = df[['datetime', 'stock_code', 'close', 'volume']]
+    df['datetime'] = pd.to_datetime(df['datetime'])
+    
+    # Sort the data by datetime
+    df = df.sort_values(by='datetime')
+    
+    return df
 
-# Function to authenticate and get access token
-@st.cache_data
-def get_access_token():
-    url = f"{BASE_URL}login"
-    payload = {"api_key": API_KEY, "secret_key": SECRET_KEY, "auth_code": AUTH_CODE}
-    response = requests.post(url, json=payload)
-    response.raise_for_status()
-    return response.json()["access_token"]
+# Function to train the prediction model (simple regression model)
+def train_model(df):
+    # Feature extraction (You may include more sophisticated features)
+    df['day_of_week'] = df['datetime'].dt.dayofweek
+    df['hour_of_day'] = df['datetime'].dt.hour
+    X = df[['volume', 'day_of_week', 'hour_of_day']]
+    y = df['close']
+    
+    # Standardizing the features
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+    
+    # Train a Linear Regression Model
+    model = LinearRegression()
+    model.fit(X_scaled, y)
+    
+    return model, scaler
 
-# Fetch available strikes and expiry dates
-def fetch_options_data(token):
-    url = f"{BASE_URL}optionchain"
-    headers = {"Authorization": f"Bearer {token}"}
-    params = {"symbol": "BANKNIFTY"}
-    response = requests.get(url, headers=headers, params=params)
-    response.raise_for_status()
-    return response.json()
+# Function to make predictions
+def make_prediction(model, scaler, volume, day_of_week, hour_of_day):
+    X_pred = np.array([[volume, day_of_week, hour_of_day]])
+    X_pred_scaled = scaler.transform(X_pred)
+    predicted_price = model.predict(X_pred_scaled)
+    return predicted_price[0]
 
-# Fetch real-time LTP and Open Interest
-def fetch_real_time_data(token, symbol, expiry, option_type, strike):
-    url = f"{BASE_URL}optiondata"
-    headers = {"Authorization": f"Bearer {token}"}
-    params = {
-        "symbol": symbol,
-        "expiry_date": expiry,
-        "option_type": option_type,
-        "strike_price": strike
-    }
-    response = requests.get(url, headers=headers, params=params)
-    response.raise_for_status()
-    return response.json()
+# Streamlit App Layout
+st.title("BankNifty Stock Prediction App")
+st.write("Upload a CSV file with the historical data, and the app will predict the future LTP for a given strike.")
 
-# Placeholder for predictions
-def predict_price(current_ltp, open_interest):
-    # Example prediction logic: Adjust this based on your ML model or algorithm
-    predicted_ltp = current_ltp * (1 + 0.02)  # Assume a 2% increase for now
-    return predicted_ltp
+# Upload CSV file
+uploaded_file = st.file_uploader("Upload CSV File", type=["csv"])
+if uploaded_file is not None:
+    df = load_and_clean_data(uploaded_file)
+    
+    # Show the cleaned data preview
+    st.subheader("Cleaned Data")
+    st.write(df.head())
 
-# App starts here
-st.title("Bank Nifty Prediction App")
-
-# Authenticate and get access token
-access_token = get_access_token()
-
-# Fetch options data for strike prices and expiry dates
-options_data = fetch_options_data(access_token)
-strike_prices = sorted(set([data["strike_price"] for data in options_data]))
-expiry_dates = sorted(set([data["expiry_date"] for data in options_data]))
-
-# Input fields
-option_type = st.selectbox("Option Type", ["CE (Call)", "PE (Put)"])
-expiry_date = st.selectbox("Expiry Date", expiry_dates)
-strike_price = st.selectbox("Strike Price", strike_prices)
-
-# Display real-time LTP and Open Interest
-if st.button("Fetch Real-Time Data"):
-    symbol = "BANKNIFTY"
-    real_time_data = fetch_real_time_data(
-        access_token, symbol, expiry_date, option_type, strike_price
-    )
-    current_ltp = real_time_data["ltp"]
-    open_interest = real_time_data["open_interest"]
-
-    st.write(f"**Current LTP:** ₹{current_ltp:.2f}")
-    st.write(f"**Open Interest:** {open_interest:,}")
-
-# Predict and display output
-if st.button("Predict"):
-    # Ensure we have LTP and Open Interest from the real-time data fetch
-    if "current_ltp" not in locals():
-        st.error("Please fetch real-time data first!")
-    else:
-        predicted_ltp = predict_price(current_ltp, open_interest)
-        profit_or_loss = predicted_ltp - current_ltp
-
-        st.write(f"**Predicted LTP:** ₹{predicted_ltp:.2f}")
-        st.write(f"**Profit/Loss:** ₹{profit_or_loss:.2f}")
-
-        recommendation = "Buy" if profit_or_loss > 0 else "Do Not Buy"
-        st.write(f"**Recommendation:** {recommendation}")
+    # Train prediction model
+    model, scaler = train_model(df)
+    
+    # User Input: Enter data for prediction
+    strike_price = st.selectbox('Select Strike Price', df['stock_code'].unique())
+    volume = st.number_input('Enter Volume', min_value=1, value=1000000)
+    day_of_week = st.selectbox('Select Day of Week', [0, 1, 2, 3, 4, 5, 6])  # 0=Monday, 6=Sunday
+    hour_of_day = st.selectbox('Select Hour of Day', [i for i in range(24)])
+    
+    # Make Prediction
+    predicted_ltp = make_prediction(model, scaler, volume, day_of_week, hour_of_day)
+    
+    # Calculate Profit/Loss
+    current_ltp = df[df['stock_code'] == strike_price]['close'].iloc[-1]
+    profit_loss = predicted_ltp - current_ltp
+    recommendation = "Buy" if profit_loss > 0 else "Do not Buy"
+    
+    # Output Results
+    st.subheader("Prediction Results")
+    st.write(f"Predicted LTP: {predicted_ltp:.2f}")
+    st.write(f"Current LTP: {current_ltp:.2f}")
+    st.write(f"Profit/Loss: {profit_loss:.2f}")
+    st.write(f"Recommendation: {recommendation}")
+    
+    # Display a plot of historical data (optional)
+    st.subheader("Historical Data Visualization")
+    fig, ax = plt.subplots()
+    ax.plot(df['datetime'], df['close'])
+    ax.set_title("Stock Price History")
+    ax.set_xlabel("Date")
+    ax.set_ylabel("Price")
+    st.pyplot(fig)
