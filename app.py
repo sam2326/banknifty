@@ -12,29 +12,32 @@ st.write("Upload your trading CSV file in the prescribed format to predict LTP f
 uploaded_file = st.file_uploader("Upload CSV File", type="csv")
 
 if uploaded_file:
-    # Load CSV into DataFrame
     try:
+        # Load CSV into DataFrame
         data = pd.read_csv(uploaded_file)
-        
+
         # Display column names to check for any issues
         st.write("Uploaded Data:")
         st.write(f"Columns in the CSV: {data.columns}")
         
-        # Handle 'Date' column
-        if 'Date' in data.columns:
-            data['Date'] = pd.to_datetime(data['Date'], errors='coerce')
+        # Handle 'Date' column carefully
+        if 'Date' not in data.columns:
+            st.error("The 'Date' column is missing in the uploaded file!")
+        else:
+            # Try to parse the 'Date' column, coercing errors
+            data['Date'] = pd.to_datetime(data['Date'], errors='coerce', dayfirst=True)
             if data['Date'].isnull().any():
                 st.warning("Some 'Date' entries could not be parsed and were set to NaT (Not a Time).")
-        else:
-            st.error("The 'Date' column is missing in the uploaded file!")
-            data['Date'] = pd.to_datetime([], errors='coerce')  # Create an empty Date column for display
-
+            else:
+                st.write(f"'Date' column parsed successfully.")
+        
         # Handle 'LTP' column
         if 'LTP' not in data.columns:
             st.error("The 'LTP' column is missing in the uploaded file!")
         else:
             data = data.sort_values(by='Date')
 
+        # Display the processed data
         st.write("Processed Data:")
         st.dataframe(data.head())
 
@@ -65,9 +68,9 @@ if uploaded_file:
         st.dataframe(filtered_data)
 
         if not filtered_data.empty:
-            # Features and Target
-            X = np.arange(len(filtered_data)).reshape(-1, 1)  # Using indices as a placeholder for feature
-            y = filtered_data['LTP']  # Target is LTP
+            # Features and Target for Prediction
+            X = np.arange(len(filtered_data)).reshape(-1, 1)  # Using indices as a placeholder feature
+            y = filtered_data['LTP']  # Target variable is 'LTP'
             
             # Train-Test Split
             X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
@@ -80,7 +83,7 @@ if uploaded_file:
             next_day_index = np.array([len(filtered_data)]).reshape(-1, 1)
             predicted_ltp = model.predict(next_day_index)[0]
             
-            # Display Results
+            # Display Prediction Results
             st.write("Prediction Results:")
             st.write(f"Predicted LTP for the next day: {predicted_ltp:.2f}")
             current_ltp = filtered_data['LTP'].iloc[-1]
