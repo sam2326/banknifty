@@ -39,14 +39,14 @@ if uploaded_file is not None:
         else:
             st.write("Filtered Dataset:", filtered_data)
 
-            # Current LTP
-            current_ltp = filtered_data['LTP'].iloc[-1]
-
-            # Check for sufficient data points
+            # Check if there are enough data points for prediction
             if len(filtered_data) < 2:
-                st.warning("Not enough data points for prediction. Displaying current LTP only.")
-                st.write(f"Current LTP: {current_ltp:.2f}")
+                st.warning("Not enough data points for prediction. Please select a broader range or more data.")
+                st.write(f"Current LTP: {filtered_data['LTP'].iloc[-1]:.2f}")
             else:
+                # Current LTP
+                current_ltp = filtered_data['LTP'].iloc[-1]
+
                 # Prepare features and target
                 X = np.arange(len(filtered_data)).reshape(-1, 1)  # Use indices as features
                 y = filtered_data['LTP']
