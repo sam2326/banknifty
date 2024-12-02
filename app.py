@@ -23,8 +23,8 @@ if uploaded_file:
         st.write("Uploaded Data:")
         st.write(f"Columns in the CSV: {data.columns}")
         
-        # Check for required columns: Expiry Date, LTP, Option Type
-        required_columns = ['EXPIRY DATE', 'OPTION TYPE', 'LTP']
+        # Check for required columns: Expiry Date, Option Type, Strike, LTP
+        required_columns = ['EXPIRY DATE', 'OPTION TYPE', 'STRIKE', 'LTP']
         missing_columns = [col for col in required_columns if col not in data.columns]
         
         if missing_columns:
@@ -63,11 +63,15 @@ if uploaded_file:
         
         if 'OPTION TYPE' in data.columns:
             selected_option_type = st.sidebar.selectbox("Select Option Type", data['OPTION TYPE'].dropna().unique())
+        
+        if 'STRIKE' in data.columns:
+            selected_strike = st.sidebar.selectbox("Select Strike Price", sorted(data['STRIKE'].dropna().unique()))
 
         # Filter the data based on user input
         filtered_data = data[
             (data['EXPIRY DATE'] == selected_expiry) &
-            (data['OPTION TYPE'] == selected_option_type)
+            (data['OPTION TYPE'] == selected_option_type) &
+            (data['STRIKE'] == selected_strike)
         ]
         
         st.write("Filtered Data:")
