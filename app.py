@@ -16,55 +16,55 @@ if uploaded_file:
         # Load CSV into DataFrame
         data = pd.read_csv(uploaded_file)
 
-        # Clean column names: Strip spaces and convert to lowercase
-        data.columns = data.columns.str.strip().str.lower()
+        # Clean column names: Strip spaces and convert to uppercase
+        data.columns = data.columns.str.strip().str.upper()
 
         # Display cleaned column names to check for any issues
         st.write("Uploaded Data:")
         st.write(f"Columns in the CSV: {data.columns}")
         
-        # Handle 'expiry date' column carefully
-        if 'expiry date' not in data.columns:
-            st.error("The 'Expiry Date' column is missing in the uploaded file!")
+        # Handle 'EXPIRY DATE' column carefully
+        if 'EXPIRY DATE' not in data.columns:
+            st.error("The 'EXPIRY DATE' column is missing in the uploaded file!")
         else:
-            # Try to parse the 'expiry date' column, coercing errors
-            data['expiry date'] = pd.to_datetime(data['expiry date'], errors='coerce', dayfirst=True)
-            if data['expiry date'].isnull().any():
-                st.warning("Some 'Expiry Date' entries could not be parsed and were set to NaT (Not a Time).")
+            # Try to parse the 'EXPIRY DATE' column, coercing errors
+            data['EXPIRY DATE'] = pd.to_datetime(data['EXPIRY DATE'], errors='coerce', dayfirst=True)
+            if data['EXPIRY DATE'].isnull().any():
+                st.warning("Some 'EXPIRY DATE' entries could not be parsed and were set to NaT (Not a Time).")
             else:
-                st.write("'Expiry Date' column parsed successfully.")
+                st.write("'EXPIRY DATE' column parsed successfully.")
         
-        # Handle 'ltp' column
-        if 'ltp' not in data.columns:
+        # Handle 'LTP' column
+        if 'LTP' not in data.columns:
             st.error("The 'LTP' column is missing in the uploaded file!")
         else:
-            data = data.sort_values(by='expiry date')
+            data = data.sort_values(by='EXPIRY DATE')
 
         # Display the processed data
         st.write("Processed Data:")
         st.dataframe(data.head())
 
         # Sidebar Filters: Add checks for column existence
-        if 'expiry date' not in data.columns:
-            st.error("Column 'Expiry Date' not found in the data!")
+        if 'EXPIRY DATE' not in data.columns:
+            st.error("Column 'EXPIRY DATE' not found in the data!")
         else:
-            selected_expiry = st.sidebar.selectbox("Select Expiry Date", data['expiry date'].unique())
+            selected_expiry = st.sidebar.selectbox("Select Expiry Date", data['EXPIRY DATE'].unique())
         
-        if 'symbol' not in data.columns:
-            st.error("Column 'Symbol' not found in the data!")
+        if 'SYMBOL' not in data.columns:
+            st.error("Column 'SYMBOL' not found in the data!")
         else:
-            selected_symbol = st.sidebar.selectbox("Select Symbol", data['symbol'].unique())
+            selected_symbol = st.sidebar.selectbox("Select Symbol", data['SYMBOL'].unique())
 
-        if 'option type' not in data.columns:
-            st.error("Column 'Option Type' not found in the data!")
+        if 'OPTION TYPE' not in data.columns:
+            st.error("Column 'OPTION TYPE' not found in the data!")
         else:
-            selected_option_type = st.sidebar.selectbox("Select Option Type", data['option type'].unique())
+            selected_option_type = st.sidebar.selectbox("Select Option Type", data['OPTION TYPE'].unique())
 
         # Filter the data based on user input
         filtered_data = data[
-            (data['expiry date'] == selected_expiry) &
-            (data['symbol'] == selected_symbol) &
-            (data['option type'] == selected_option_type)
+            (data['EXPIRY DATE'] == selected_expiry) &
+            (data['SYMBOL'] == selected_symbol) &
+            (data['OPTION TYPE'] == selected_option_type)
         ]
         
         st.write("Filtered Data:")
@@ -73,7 +73,7 @@ if uploaded_file:
         if not filtered_data.empty:
             # Features and Target for Prediction
             X = np.arange(len(filtered_data)).reshape(-1, 1)  # Using indices as a placeholder feature
-            y = filtered_data['ltp']  # Target variable is 'LTP'
+            y = filtered_data['LTP']  # Target variable is 'LTP'
             
             # Train-Test Split
             X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
@@ -89,7 +89,7 @@ if uploaded_file:
             # Display Prediction Results
             st.write("Prediction Results:")
             st.write(f"Predicted LTP for the next day: {predicted_ltp:.2f}")
-            current_ltp = filtered_data['ltp'].iloc[-1]
+            current_ltp = filtered_data['LTP'].iloc[-1]
             ltp_difference = predicted_ltp - current_ltp
             st.write(f"Current LTP: {current_ltp:.2f}")
             st.write(f"Difference (Predicted - Current): {ltp_difference:.2f}")
