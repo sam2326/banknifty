@@ -13,13 +13,13 @@ if uploaded_file is not None:
     try:
         # Load and clean data
         data = pd.read_csv(uploaded_file)
-        data.columns = data.columns.str.strip().str.replace(r'\s+\n', '')  # Clean headers
+        data.columns = data.columns.str.strip().str.replace(r'\s+\n', '', regex=True)  # Clean headers
         data['EXPIRY DATE'] = pd.to_datetime(data['EXPIRY DATE'], format='%d-%b-%Y', errors='coerce')  # Parse dates
-        data['STRIKE'] = data['STRIKE'].replace({',': ''}, regex=True).astype(float)  # Remove commas, convert to float
-        data['LTP'] = data['LTP'].replace({',': ''}, regex=True).astype(float)  # Remove commas, convert to float
+        data['STRIKE'] = data['STRIKE'].replace({',': '', '-': None}, regex=True).astype(float)  # Remove commas, convert to float
+        data['LTP'] = data['LTP'].replace({',': '', '-': None}, regex=True).astype(float)  # Remove commas, convert to float
         data['OPTION TYPE'] = data['OPTION TYPE'].str.strip().str.upper()  # Standardize option types
         
-        # Drop rows with invalid data
+        # Drop rows with missing or invalid data in key columns
         data.dropna(subset=['EXPIRY DATE', 'STRIKE', 'LTP', 'OPTION TYPE'], inplace=True)
         
         # Sidebar filters
