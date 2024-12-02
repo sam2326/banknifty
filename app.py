@@ -20,32 +20,32 @@ if uploaded_file:
         st.write("Uploaded Data:")
         st.write(f"Columns in the CSV: {data.columns}")
         
-        # Handle 'Date' column carefully
-        if 'Date' not in data.columns:
-            st.error("The 'Date' column is missing in the uploaded file!")
+        # Handle 'Expiry Date' column carefully
+        if 'Expiry Date' not in data.columns:
+            st.error("The 'Expiry Date' column is missing in the uploaded file!")
         else:
-            # Try to parse the 'Date' column, coercing errors
-            data['Date'] = pd.to_datetime(data['Date'], errors='coerce', dayfirst=True)
-            if data['Date'].isnull().any():
-                st.warning("Some 'Date' entries could not be parsed and were set to NaT (Not a Time).")
+            # Try to parse the 'Expiry Date' column, coercing errors
+            data['Expiry Date'] = pd.to_datetime(data['Expiry Date'], errors='coerce', dayfirst=True)
+            if data['Expiry Date'].isnull().any():
+                st.warning("Some 'Expiry Date' entries could not be parsed and were set to NaT (Not a Time).")
             else:
-                st.write(f"'Date' column parsed successfully.")
+                st.write("'Expiry Date' column parsed successfully.")
         
         # Handle 'LTP' column
         if 'LTP' not in data.columns:
             st.error("The 'LTP' column is missing in the uploaded file!")
         else:
-            data = data.sort_values(by='Date')
+            data = data.sort_values(by='Expiry Date')
 
         # Display the processed data
         st.write("Processed Data:")
         st.dataframe(data.head())
 
         # Sidebar Filters: Add checks for column existence
-        if 'Expiry' not in data.columns:
-            st.error("Column 'Expiry' not found in the data!")
+        if 'Expiry Date' not in data.columns:
+            st.error("Column 'Expiry Date' not found in the data!")
         else:
-            selected_expiry = st.sidebar.selectbox("Select Expiry Date", data['Expiry'].unique())
+            selected_expiry = st.sidebar.selectbox("Select Expiry Date", data['Expiry Date'].unique())
         
         if 'Symbol' not in data.columns:
             st.error("Column 'Symbol' not found in the data!")
@@ -59,7 +59,7 @@ if uploaded_file:
 
         # Filter the data based on user input
         filtered_data = data[
-            (data['Expiry'] == selected_expiry) &
+            (data['Expiry Date'] == selected_expiry) &
             (data['Symbol'] == selected_symbol) &
             (data['Option Type'] == selected_option_type)
         ]
