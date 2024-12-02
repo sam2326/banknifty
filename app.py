@@ -1,56 +1,49 @@
 import streamlit as st
 import pandas as pd
-import hashlib
-from datetime import datetime
 import numpy as np
-from sklearn.linear_model import LinearRegression
+import datetime
 
 # Function to load and clean data
 def load_and_clean_data(uploaded_file):
     # Read the uploaded CSV file
     df = pd.read_csv(uploaded_file)
 
-    # Inspect the columns and data
+    # Display the actual column names in the uploaded file
     st.write("Columns in uploaded file:")
     st.write(df.columns)
 
+    # Display first few rows to check the content
     st.write("First few rows of the data:")
     st.write(df.head())
 
-    # Perform cleaning and adjust based on available columns
-    # Check for necessary columns and rename if needed
+    # Check if the necessary columns are present
     required_columns = ['datetime', 'symbol', 'strikePrice', 'ltp', 'contracts', 'valueInLakh']
 
-    # Check if required columns are present
+    # Display error message if any required columns are missing
     missing_columns = [col for col in required_columns if col not in df.columns]
-    
     if missing_columns:
         st.error(f"Missing columns in uploaded file: {', '.join(missing_columns)}")
         return None
-
-    # Proceed with cleaning if all required columns are present
+    
+    # Clean data if columns exist
+    # Convert 'datetime' to proper datetime format
     df['datetime'] = pd.to_datetime(df['datetime'], errors='coerce')
-    df['strikePrice'] = pd.to_numeric(df['strikePrice'], errors='coerce')
-    df['ltp'] = pd.to_numeric(df['ltp'], errors='coerce')
-    df['contracts'] = pd.to_numeric(df['contracts'], errors='coerce')
-    df['valueInLakh'] = pd.to_numeric(df['valueInLakh'], errors='coerce')
 
-    # Drop rows with missing or invalid data
-    df.dropna(subset=['datetime', 'ltp', 'strikePrice'], inplace=True)
+    # Filter or process the columns as needed
+    df_cleaned = df[['datetime', 'symbol', 'strikePrice', 'ltp', 'contracts', 'valueInLakh']].copy()
 
-    # Filter and clean data as needed
-    return df
+    # Add any additional cleaning or data transformations here
 
-# Function to predict future LTP (dummy model for illustration)
+    return df_cleaned
+
+# Function to perform predictions (simplified for illustration)
 def predict_ltp(df):
-    # Create a linear regression model for LTP prediction based on strike price
-    model = LinearRegression()
-    model.fit(df[['strikePrice']], df['ltp'])
+    # Dummy prediction logic, you can replace it with actual prediction model logic
+    df['predicted_ltp'] = df['ltp'] * np.random.uniform(0.98, 1.02, size=len(df))  # Example: small random prediction variation
+    df['profit_loss'] = df['predicted_ltp'] - df['ltp']
+    df['recommendation'] = df['profit_loss'].apply(lambda x: 'Buy' if x > 0 else 'Do not Buy')
 
-    # Predict LTP for the next data point (for example, predicting for the next strike price)
-    predicted_ltp = model.predict([[df['strikePrice'].max() + 10]])  # Example prediction for a higher strike price
-
-    return predicted_ltp[0]
+    return df
 
 # Main function to run the Streamlit app
 def main():
@@ -60,33 +53,19 @@ def main():
     uploaded_file = st.file_uploader("Upload CSV", type=['csv'])
 
     if uploaded_file is not None:
+        # Load and clean the data
         df = load_and_clean_data(uploaded_file)
 
         if df is not None:
-            # Display cleaned data
-            st.write("Cleaned Data Preview:")
-            st.write(df.head())
+            # Perform predictions
+            df_with_predictions = predict_ltp(df)
 
-            # Allow the user to select strike price and LTP
-            strike_price = st.selectbox("Select Strike Price", df['strikePrice'].unique())
-            selected_data = df[df['strikePrice'] == strike_price]
+            # Display the cleaned data and predictions
+            st.write("Cleaned Data with Predictions:")
+            st.write(df_with_predictions[['datetime', 'symbol', 'strikePrice', 'ltp', 'predicted_ltp', 'profit_loss', 'recommendation']])
 
-            current_ltp = selected_data['ltp'].iloc[0] if not selected_data.empty else 0
-            st.write(f"Current LTP for strike {strike_price}: {current_ltp}")
-
-            # Get prediction
-            predicted_ltp = predict_ltp(df)
-            st.write(f"Predicted LTP for strike {strike_price}: {predicted_ltp}")
-
-            # Calculate profit or loss
-            profit_or_loss = predicted_ltp - current_ltp
-            if profit_or_loss > 0:
-                recommendation = "Profit - Buy"
-            else:
-                recommendation = "Loss - Don't Buy"
-
-            st.write(f"Predicted Profit/Loss: {profit_or_loss}")
-            st.write(f"Recommendation: {recommendation}")
+            # Display a message about the predictions
+            st.write("Note: The prediction is based on simplified logic. Please replace it with a model that suits your needs.")
 
 # Run the app
 if __name__ == "__main__":
