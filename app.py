@@ -20,9 +20,20 @@ if uploaded_file:
         st.write("Uploaded Data:")
         st.write(f"Columns in the CSV: {data.columns}")
         
-        # Preprocess Data
-        data['Date'] = pd.to_datetime(data['Date'], errors='coerce')
-        data = data.sort_values(by='Date')
+        # Handle 'Date' column
+        if 'Date' in data.columns:
+            data['Date'] = pd.to_datetime(data['Date'], errors='coerce')
+            if data['Date'].isnull().any():
+                st.warning("Some 'Date' entries could not be parsed and were set to NaT (Not a Time).")
+        else:
+            st.error("The 'Date' column is missing in the uploaded file!")
+            data['Date'] = pd.to_datetime([], errors='coerce')  # Create an empty Date column for display
+
+        # Handle 'LTP' column
+        if 'LTP' not in data.columns:
+            st.error("The 'LTP' column is missing in the uploaded file!")
+        else:
+            data = data.sort_values(by='Date')
 
         st.write("Processed Data:")
         st.dataframe(data.head())
