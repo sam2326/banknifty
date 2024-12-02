@@ -23,10 +23,16 @@ if uploaded_file:
         st.write("Uploaded Data:")
         st.write(f"Columns in the CSV: {data.columns}")
         
-        # Handle 'EXPIRY DATE' column carefully
-        if 'EXPIRY DATE' not in data.columns:
-            st.error("The 'EXPIRY DATE' column is missing in the uploaded file!")
-        else:
+        # Check for required columns: Expiry Date, LTP, Symbol, Option Type
+        required_columns = ['EXPIRY DATE', 'OPTION TYPE', 'LTP', 'SYMBOL']
+        missing_columns = [col for col in required_columns if col not in data.columns]
+        
+        if missing_columns:
+            st.error(f"Missing columns in the uploaded file: {', '.join(missing_columns)}")
+            st.stop()
+
+        # Handle 'EXPIRY DATE' column
+        if 'EXPIRY DATE' in data.columns:
             # Try to parse the 'EXPIRY DATE' column, coercing errors
             data['EXPIRY DATE'] = pd.to_datetime(data['EXPIRY DATE'], errors='coerce', dayfirst=True)
             if data['EXPIRY DATE'].isnull().any():
@@ -37,28 +43,21 @@ if uploaded_file:
         # Handle 'LTP' column
         if 'LTP' not in data.columns:
             st.error("The 'LTP' column is missing in the uploaded file!")
-        else:
-            data = data.sort_values(by='EXPIRY DATE')
+            st.stop()
 
         # Display the processed data
         st.write("Processed Data:")
         st.dataframe(data.head())
 
         # Sidebar Filters: Add checks for column existence
-        if 'EXPIRY DATE' not in data.columns:
-            st.error("Column 'EXPIRY DATE' not found in the data!")
-        else:
-            selected_expiry = st.sidebar.selectbox("Select Expiry Date", data['EXPIRY DATE'].unique())
+        if 'EXPIRY DATE' in data.columns:
+            selected_expiry = st.sidebar.selectbox("Select Expiry Date", data['EXPIRY DATE'].dropna().unique())
         
-        if 'SYMBOL' not in data.columns:
-            st.error("Column 'SYMBOL' not found in the data!")
-        else:
-            selected_symbol = st.sidebar.selectbox("Select Symbol", data['SYMBOL'].unique())
+        if 'SYMBOL' in data.columns:
+            selected_symbol = st.sidebar.selectbox("Select Symbol", data['SYMBOL'].dropna().unique())
 
-        if 'OPTION TYPE' not in data.columns:
-            st.error("Column 'OPTION TYPE' not found in the data!")
-        else:
-            selected_option_type = st.sidebar.selectbox("Select Option Type", data['OPTION TYPE'].unique())
+        if 'OPTION TYPE' in data.columns:
+            selected_option_type = st.sidebar.selectbox("Select Option Type", data['OPTION TYPE'].dropna().unique())
 
         # Filter the data based on user input
         filtered_data = data[
