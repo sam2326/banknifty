@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 from sklearn.linear_model import LinearRegression
-from sklearn.model_selection import train_test_split
 import numpy as np
 
 # Streamlit App Title
@@ -77,12 +76,22 @@ if uploaded_file:
         st.write("Filtered Data:")
         st.dataframe(filtered_data)
 
-        if not filtered_data.empty:
+        if len(filtered_data) < 2:
+            st.warning("Not enough data points available for training. Using available data directly for prediction.")
+            if len(filtered_data) == 1:
+                current_ltp = filtered_data['LTP'].iloc[0]
+                st.write(f"Current LTP: {current_ltp:.2f}")
+                st.write("Not enough data to predict a future LTP.")
+            else:
+                st.error("No data available for the selected criteria.")
+        else:
             # Features and Target for Prediction
             X = np.arange(len(filtered_data)).reshape(-1, 1)  # Using indices as a placeholder feature
             y = filtered_data['LTP']  # Target variable is 'LTP'
             
             # Train-Test Split
+            # Using train_test_split only when there are enough samples
+            from sklearn.model_selection import train_test_split
             X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
             
             # Linear Regression Model
@@ -106,7 +115,5 @@ if uploaded_file:
             profit_or_loss = "Profit" if ltp_difference > 0 else "Loss"
             st.write(f"Recommendation: {decision}")
             st.write(f"Expected Outcome: {profit_or_loss}")
-        else:
-            st.warning("No data available for the selected criteria.")
     except Exception as e:
         st.error(f"Error processing the file: {e}")
