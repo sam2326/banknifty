@@ -23,8 +23,8 @@ if uploaded_file:
         st.write("Uploaded Data:")
         st.write(f"Columns in the CSV: {data.columns}")
         
-        # Check for required columns: Expiry Date, LTP, Symbol, Option Type
-        required_columns = ['EXPIRY DATE', 'OPTION TYPE', 'LTP', 'SYMBOL']
+        # Check for required columns: Expiry Date, LTP, Option Type
+        required_columns = ['EXPIRY DATE', 'OPTION TYPE', 'LTP']
         missing_columns = [col for col in required_columns if col not in data.columns]
         
         if missing_columns:
@@ -53,16 +53,12 @@ if uploaded_file:
         if 'EXPIRY DATE' in data.columns:
             selected_expiry = st.sidebar.selectbox("Select Expiry Date", data['EXPIRY DATE'].dropna().unique())
         
-        if 'SYMBOL' in data.columns:
-            selected_symbol = st.sidebar.selectbox("Select Symbol", data['SYMBOL'].dropna().unique())
-
         if 'OPTION TYPE' in data.columns:
             selected_option_type = st.sidebar.selectbox("Select Option Type", data['OPTION TYPE'].dropna().unique())
 
         # Filter the data based on user input
         filtered_data = data[
             (data['EXPIRY DATE'] == selected_expiry) &
-            (data['SYMBOL'] == selected_symbol) &
             (data['OPTION TYPE'] == selected_option_type)
         ]
         
