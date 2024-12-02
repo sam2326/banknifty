@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import datetime
 
 # Function to load and clean data
 def load_and_clean_data(uploaded_file):
@@ -17,7 +16,7 @@ def load_and_clean_data(uploaded_file):
     st.write(df.head())
 
     # Check if the necessary columns are present
-    required_columns = ['datetime', 'symbol', 'strikePrice', 'ltp', 'contracts', 'valueInLakh']
+    required_columns = ['strikePrice', 'ltp']
 
     # Display error message if any required columns are missing
     missing_columns = [col for col in required_columns if col not in df.columns]
@@ -26,20 +25,18 @@ def load_and_clean_data(uploaded_file):
         return None
     
     # Clean data if columns exist
-    # Convert 'datetime' to proper datetime format
-    df['datetime'] = pd.to_datetime(df['datetime'], errors='coerce')
-
-    # Filter or process the columns as needed
-    df_cleaned = df[['datetime', 'symbol', 'strikePrice', 'ltp', 'contracts', 'valueInLakh']].copy()
-
-    # Add any additional cleaning or data transformations here
-
+    df_cleaned = df[['strikePrice', 'ltp']].copy()  # Only keep strikePrice and ltp columns
     return df_cleaned
 
 # Function to perform predictions (simplified for illustration)
-def predict_ltp(df):
+def predict_ltp(df, option_type):
     # Dummy prediction logic, you can replace it with actual prediction model logic
-    df['predicted_ltp'] = df['ltp'] * np.random.uniform(0.98, 1.02, size=len(df))  # Example: small random prediction variation
+    # Option type logic (Call or Put)
+    if option_type == 'Call':
+        df['predicted_ltp'] = df['ltp'] * np.random.uniform(1.02, 1.05, size=len(df))  # Call option: predicted LTP is higher
+    else:
+        df['predicted_ltp'] = df['ltp'] * np.random.uniform(0.95, 1.02, size=len(df))  # Put option: predicted LTP is lower
+
     df['profit_loss'] = df['predicted_ltp'] - df['ltp']
     df['recommendation'] = df['profit_loss'].apply(lambda x: 'Buy' if x > 0 else 'Do not Buy')
 
@@ -57,12 +54,15 @@ def main():
         df = load_and_clean_data(uploaded_file)
 
         if df is not None:
+            # Dropdown to select Call or Put option
+            option_type = st.selectbox('Select Option Type', ['Call', 'Put'])
+
             # Perform predictions
-            df_with_predictions = predict_ltp(df)
+            df_with_predictions = predict_ltp(df, option_type)
 
             # Display the cleaned data and predictions
             st.write("Cleaned Data with Predictions:")
-            st.write(df_with_predictions[['datetime', 'symbol', 'strikePrice', 'ltp', 'predicted_ltp', 'profit_loss', 'recommendation']])
+            st.write(df_with_predictions[['strikePrice', 'ltp', 'predicted_ltp', 'profit_loss', 'recommendation']])
 
             # Display a message about the predictions
             st.write("Note: The prediction is based on simplified logic. Please replace it with a model that suits your needs.")
