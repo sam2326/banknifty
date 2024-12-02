@@ -1,72 +1,75 @@
 import streamlit as st
 import pandas as pd
+from sklearn.linear_model import LinearRegression
+from sklearn.model_selection import train_test_split
 import numpy as np
 
-# Function to load and clean data
-def load_and_clean_data(uploaded_file):
-    # Read the uploaded CSV file
-    df = pd.read_csv(uploaded_file)
+# Streamlit App
+st.title("Intraday Trading Predictor")
+st.write("Upload your trading CSV file in the prescribed format.")
 
-    # Display the actual column names in the uploaded file
-    st.write("Columns in uploaded file:")
-    st.write(df.columns)
+# File Upload
+uploaded_file = st.file_uploader("Upload CSV", type="csv")
 
-    # Display first few rows to check the content
-    st.write("First few rows of the data:")
-    st.write(df.head())
-
-    # Check if the necessary columns are present
-    required_columns = ['strikePrice', 'ltp']
-
-    # Display error message if any required columns are missing
-    missing_columns = [col for col in required_columns if col not in df.columns]
-    if missing_columns:
-        st.error(f"Missing columns in uploaded file: {', '.join(missing_columns)}")
-        return None
+if uploaded_file:
+    # Load CSV
+    data = pd.read_csv(uploaded_file)
+    st.write("Uploaded Data:")
+    st.dataframe(data.head())
     
-    # Clean data if columns exist
-    df_cleaned = df[['strikePrice', 'ltp']].copy()  # Only keep strikePrice and ltp columns
-    return df_cleaned
-
-# Function to perform predictions (simplified for illustration)
-def predict_ltp(df, option_type):
-    # Dummy prediction logic, you can replace it with actual prediction model logic
-    # Option type logic (Call or Put)
-    if option_type == 'Call':
-        df['predicted_ltp'] = df['ltp'] * np.random.uniform(1.02, 1.05, size=len(df))  # Call option: predicted LTP is higher
+    # Data Preprocessing
+    try:
+        data['Date'] = pd.to_datetime(data['Date'])
+        data = data.sort_values(by='Date')
+        st.write("Processed Data:")
+        st.dataframe(data.head())
+    except Exception as e:
+        st.error(f"Error processing data: {e}")
+    
+    # Dropdowns for customization
+    st.sidebar.title("Prediction Inputs")
+    selected_expiry = st.sidebar.selectbox("Select Expiry Date", data['Expiry'].unique())
+    selected_symbol = st.sidebar.selectbox("Select Symbol", data['Symbol'].unique())
+    selected_option_type = st.sidebar.selectbox("Select Option Type", data['Option Type'].unique())
+    
+    # Filter Data
+    filtered_data = data[
+        (data['Expiry'] == selected_expiry) &
+        (data['Symbol'] == selected_symbol) &
+        (data['Option Type'] == selected_option_type)
+    ]
+    
+    st.write("Filtered Data:")
+    st.dataframe(filtered_data)
+    
+    if not filtered_data.empty:
+        # Features and Target
+        X = np.arange(len(filtered_data)).reshape(-1, 1)  # Using indices as a placeholder for feature
+        y = filtered_data['LTP']  # Target is LTP
+        
+        # Train-Test Split
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+        
+        # Linear Regression Model
+        model = LinearRegression()
+        model.fit(X_train, y_train)
+        
+        # Prediction for next day
+        next_day_index = np.array([len(filtered_data)]).reshape(-1, 1)
+        predicted_ltp = model.predict(next_day_index)[0]
+        
+        # Display Results
+        st.write("Prediction Results:")
+        st.write(f"Predicted LTP for the next day: {predicted_ltp:.2f}")
+        current_ltp = filtered_data['LTP'].iloc[-1]
+        ltp_difference = predicted_ltp - current_ltp
+        st.write(f"Current LTP: {current_ltp:.2f}")
+        st.write(f"Difference (Predicted - Current): {ltp_difference:.2f}")
+        
+        # Buy or Not Decision
+        decision = "Buy" if ltp_difference > 0 else "Do Not Buy"
+        profit_or_loss = "Profit" if ltp_difference > 0 else "Loss"
+        st.write(f"Recommendation: {decision}")
+        st.write(f"Expected Outcome: {profit_or_loss}")
     else:
-        df['predicted_ltp'] = df['ltp'] * np.random.uniform(0.95, 1.02, size=len(df))  # Put option: predicted LTP is lower
-
-    df['profit_loss'] = df['predicted_ltp'] - df['ltp']
-    df['recommendation'] = df['profit_loss'].apply(lambda x: 'Buy' if x > 0 else 'Do not Buy')
-
-    return df
-
-# Main function to run the Streamlit app
-def main():
-    st.title('Bank Nifty Option Prediction App')
-
-    # Upload CSV
-    uploaded_file = st.file_uploader("Upload CSV", type=['csv'])
-
-    if uploaded_file is not None:
-        # Load and clean the data
-        df = load_and_clean_data(uploaded_file)
-
-        if df is not None:
-            # Dropdown to select Call or Put option
-            option_type = st.selectbox('Select Option Type', ['Call', 'Put'])
-
-            # Perform predictions
-            df_with_predictions = predict_ltp(df, option_type)
-
-            # Display the cleaned data and predictions
-            st.write("Cleaned Data with Predictions:")
-            st.write(df_with_predictions[['strikePrice', 'ltp', 'predicted_ltp', 'profit_loss', 'recommendation']])
-
-            # Display a message about the predictions
-            st.write("Note: The prediction is based on simplified logic. Please replace it with a model that suits your needs.")
-
-# Run the app
-if __name__ == "__main__":
-    main()
+        st.warning("No data available for the selected criteria.")
