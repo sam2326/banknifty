@@ -87,8 +87,17 @@ def start_websocket():
     asyncio.run(connect_to_alpaca_websocket())
 
 # Streamlit button to start real-time prediction
+if "websocket_thread" not in st.session_state:
+    st.session_state.websocket_thread = None
+
 if st.button("Start Real-Time Prediction"):
-    # Start the WebSocket in a separate thread to avoid blocking the Streamlit UI
-    thread = threading.Thread(target=start_websocket)
-    thread.daemon = True  # Allow the thread to exit when the main program exits
-    thread.start()
+    if st.session_state.websocket_thread is None or not st.session_state.websocket_thread.is_alive():
+        # Start the WebSocket in a separate thread to avoid blocking the Streamlit UI
+        thread = threading.Thread(target=start_websocket)
+        thread.daemon = True  # Allow the thread to exit when the main program exits
+        thread.start()
+        st.session_state.websocket_thread = thread  # Store the thread reference in session_state
+        st.write("WebSocket connection started! Listening for real-time data...")
+
+    else:
+        st.write("WebSocket connection is already running.")
