@@ -1,4 +1,5 @@
 import alpaca_trade_api as tradeapi
+import yfinance as yf
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -21,32 +22,42 @@ st.write("""
 """)
 
 # Input fields for the user
-ticker = st.selectbox("Select Ticker", ["BANKNIFTY", "SPY", "AAPL", "GOOG"])  # Example tickers, BankNifty isn't directly available
 expiry_date = st.date_input("Select Expiry Date", min_value=datetime.today())
 strike_price = st.number_input("Enter Strike Price", min_value=0, value=35000)
 option_type = st.selectbox("Select Option Type", ["Call", "Put"])
 ltp = st.number_input("Enter Last Traded Price (LTP)", min_value=0, value=100)
 
-# Function to get the real-time market data from Alpaca (e.g., NIFTY, S&P500)
-def get_real_time_data():
+# Function to get BankNifty data using Yahoo Finance
+def get_banknifty_data():
     try:
-        # Get real-time market data for SPY, AAPL, or any other available symbols
-        if ticker == "BANKNIFTY":
-            # BankNifty is not available directly via Alpaca, so we return a placeholder for this example
-            st.write("BankNifty data is not available from Alpaca. Please select a U.S. stock/ETF.")
-            return None
-        # Fetch the real-time price for the symbol using Alpaca's `get_last_trade`
-        market_data = api.get_last_trade(ticker)
-        return market_data.price
+        # Fetch BankNifty data using Yahoo Finance
+        banknifty = yf.Ticker("^NSEBANK")  # ^NSEBANK is the BankNifty index symbol
+        banknifty_data = banknifty.history(period="1d", interval="1m")  # 1-minute data for the last day
+        current_price = banknifty_data["Close"].iloc[-1]  # Get the most recent closing price
+        return current_price
     except Exception as e:
-        st.write(f"Error fetching real-time data: {e}")
+        st.write(f"Error fetching BankNifty data: {e}")
         return None
 
+# Function to get real-time global market data (S&P500, AAPL) from Alpaca
+def get_global_market_data():
+    try:
+        # Get real-time market data for S&P500 (SPY) and AAPL from Alpaca
+        spy = api.get_last_trade("SPY")  # S&P 500 ETF
+        aapl = api.get_last_trade("AAPL")  # Apple Inc.
+
+        spy_price = spy.price
+        aapl_price = aapl.price
+        return spy_price, aapl_price
+    except Exception as e:
+        st.write(f"Error fetching global market data from Alpaca: {e}")
+        return None, None
+
 # Simulate prediction of the LTP for the next day based on current market conditions
-def predict_ltp(current_price):
+def predict_ltp(current_price, global_sentiment_factor):
     # Simulating a prediction based on real-time market data (you can enhance this with actual ML models)
     market_change_percentage = random.uniform(-0.02, 0.02)  # Random change between -2% to +2%
-    predicted_ltp = current_price * (1 + market_change_percentage)
+    predicted_ltp = current_price * (1 + market_change_percentage + global_sentiment_factor)
     return round(predicted_ltp, 2)
 
 # Simulate prediction of stop loss and maximum LTP
@@ -72,15 +83,26 @@ def predict_profit_or_loss(predicted_ltp, ltp, option_type):
 # Main logic
 if st.button("Get Prediction"):
     try:
-        # Get real-time market data
-        real_time_data = get_real_time_data()
+        # Get BankNifty real-time data
+        real_time_data = get_banknifty_data()
         if real_time_data is None:
             return  # Exit if real-time data is not available
 
-        st.write(f"Real-time price of {ticker}: {real_time_data}")
+        st.write(f"Real-time BankNifty index price: {real_time_data}")
+
+        # Get global market data (S&P500 and AAPL)
+        spy_price, aapl_price = get_global_market_data()
+        if spy_price is None or aapl_price is None:
+            return  # Exit if global market data is not available
+
+        st.write(f"Real-time S&P 500 price: {spy_price}")
+        st.write(f"Real-time AAPL price: {aapl_price}")
+
+        # Global market sentiment factor (based on S&P 500 and AAPL)
+        global_sentiment_factor = (spy_price + aapl_price) / 100000  # Simple example factor
 
         # Predict the LTP for the next day
-        predicted_ltp = predict_ltp(real_time_data)
+        predicted_ltp = predict_ltp(real_time_data, global_sentiment_factor)
         st.write(f"Predicted LTP for next day: {predicted_ltp}")
 
         # Predict Stop Loss and Maximum LTP
