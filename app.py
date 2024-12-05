@@ -7,7 +7,7 @@ import json
 # Constants
 APP_KEY = "1Zn5837j4439dt5_I%601255l3w6%2328d%289"
 SECRET_KEY = "1645%24kX4a37C9lY6G90873Q3617%608%2528"
-AUTHORIZATION_CODE = "49601661"
+AUTHORIZATION_CODE = "49603583"  # Updated authorization code
 REDIRECT_URI = "http://localhost:3000/callback"
 BASE_URL = "https://api.icicidirect.com"
 
@@ -29,15 +29,16 @@ def get_session_token():
     headers = {"Content-Type": "application/x-www-form-urlencoded"}
 
     response = requests.post(endpoint, data=payload, headers=headers)
+    
     if response.status_code == 200:
         token = response.json().get("access_token")
         if token:
             return token
         else:
-            st.error("Token not found in response.")
+            st.error("Error: Token not found in response.")
             return None
     else:
-        st.error(f"Failed to get session token: {response.text}")
+        st.error(f"Failed to get session token: {response.status_code} - {response.text}")
         return None
 
 # Fetch Live Data for BankNifty
@@ -58,6 +59,7 @@ def get_banknifty_data(session_token):
         "Checksum": checksum
     }
     response = requests.post(endpoint, json=payload, headers=headers)
+    
     if response.status_code == 200:
         data = response.json().get("Success")
         if data:
