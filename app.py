@@ -8,12 +8,16 @@ st.title("BankNifty Options Prediction for Intraday Trading")
 st.write("""
     This app predicts the next day's movement for BankNifty based on real-time market data.
     Enter the details for the BankNifty option you're interested in, and get predictions for the next day.
+    You can manually enter the **LTP** for the selected strike price.
 """)
 
 # Input fields for the user
 expiry_date = st.date_input("Select Expiry Date", min_value=datetime.today())
 strike_price = st.number_input("Enter Strike Price", min_value=0, value=53700)
 option_type = st.selectbox("Select Option Type", ["Call", "Put"])
+
+# Manually input the current LTP
+ltp = st.number_input("Enter Current LTP", min_value=0.0, value=752.05, step=0.05)
 
 # Function to get BankNifty current data using Yahoo Finance
 def get_banknifty_data():
@@ -85,7 +89,7 @@ def predict_profit_or_loss(predicted_ltp, ltp, option_type):
 
 # Main logic
 if st.button("Get Prediction"):
-    # Fetch the current LTP for the selected option
+    # Fetch the current LTP for the selected option (using manually input LTP)
     real_time_data = get_banknifty_data()
     
     if real_time_data is None:
@@ -101,9 +105,8 @@ if st.button("Get Prediction"):
             st.write(f"Real-time S&P 500 price: {spy_price}")
             st.write(f"Real-time Nifty 50 price: {nifty_price}")
 
-            # Calculate the LTP for the selected strike price and option type (Call/Put)
-            ltp = calculate_ltp(real_time_data, strike_price, option_type)
-            st.write(f"Calculated LTP for strike {strike_price} ({option_type} option): {ltp}")
+            # Use the manually inputted LTP for prediction
+            st.write(f"Manually input LTP: {ltp}")
 
             # Predict the LTP for the next day based on market data
             predicted_ltp = predict_ltp(ltp, spy_price, nifty_price)
