@@ -1,3 +1,4 @@
+import streamlit as st
 import requests
 import hashlib
 import datetime
@@ -31,13 +32,12 @@ def get_session_token():
     if response.status_code == 200:
         token = response.json().get("access_token")
         if token:
-            print("Session token retrieved successfully.")
             return token
         else:
-            print("Token not found in response.")
+            st.error("Token not found in response.")
             return None
     else:
-        print("Failed to get session token:", response.text)
+        st.error(f"Failed to get session token: {response.text}")
         return None
 
 # Fetch Live Data for BankNifty
@@ -61,13 +61,12 @@ def get_banknifty_data(session_token):
     if response.status_code == 200:
         data = response.json().get("Success")
         if data:
-            print("BankNifty data fetched successfully.")
             return data
         else:
-            print("No data found in response.")
+            st.error("No data found in response.")
             return None
     else:
-        print("Failed to fetch BankNifty data:", response.text)
+        st.error(f"Failed to fetch BankNifty data: {response.text}")
         return None
 
 # Dummy Prediction Model (Replace with your ML model)
@@ -76,10 +75,8 @@ def predict_banknifty(data):
     ltp = float(data.get("LTP", 0))
     day_open = float(data.get("DayOpen", 0))
     if ltp > day_open:
-        print("Prediction: BUY")
         return "BUY"
     else:
-        print("Prediction: SELL")
         return "SELL"
 
 # Place Order
@@ -111,27 +108,41 @@ def place_order(session_token, action):
     }
     response = requests.post(endpoint, json=payload, headers=headers)
     if response.status_code == 200:
-        print("Order placed successfully:", response.json())
+        st.success(f"Order placed successfully: {response.json()}")
     else:
-        print("Failed to place order:", response.text)
+        st.error(f"Failed to place order: {response.text}")
 
-# Main Application
+# Streamlit Application
 def main():
-    # Step 1: Get session token
-    session_token = get_session_token()
-    if not session_token:
+    st.title('BankNifty Prediction and Trading App')
+
+    # Step 1: Button to get session token
+    if st.button("Get Session Token"):
+        session_token = get_session_token()
+        if session_token:
+            st.success("Session Token Retrieved Successfully!")
+            st.session_state.session_token = session_token
+
+    if 'session_token' not in st.session_state:
+        st.warning("Please get the session token first.")
         return
+
+    session_token = st.session_state.session_token
 
     # Step 2: Fetch BankNifty data
-    data = get_banknifty_data(session_token)
-    if not data:
-        return
+    if st.button("Get BankNifty Data"):
+        data = get_banknifty_data(session_token)
+        if data:
+            st.write(data)
 
     # Step 3: Predict action based on data
-    action = predict_banknifty(data)
+    if 'data' in st.session_state:
+        action = predict_banknifty(data)
+        st.write(f"Predicted Action: {action}")
 
-    # Step 4: Place order based on prediction
-    place_order(session_token, action)
+        # Step 4: Place Order Button
+        if st.button(f"Place {action} Order"):
+            place_order(session_token, action)
 
 if __name__ == "__main__":
     main()
