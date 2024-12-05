@@ -28,8 +28,13 @@ def get_session_token():
     }
     headers = {"Content-Type": "application/x-www-form-urlencoded"}
 
+    # Debugging: Print the payload and headers
+    st.write("Payload:", payload)
+    st.write("Headers:", headers)
+
     response = requests.post(endpoint, data=payload, headers=headers)
     
+    # Debugging: Print full response content for troubleshooting
     if response.status_code == 200:
         token = response.json().get("access_token")
         if token:
