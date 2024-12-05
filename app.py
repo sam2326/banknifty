@@ -26,14 +26,13 @@ def get_session_token():
         "client_id": APP_KEY,
         "client_secret": SECRET_KEY
     }
-    headers = {"Content-Type": "application/x-www-form-urlencoded"}
 
     # Debugging: Print the payload and headers
     st.write("Payload:", payload)
-    st.write("Headers:", headers)
 
-    response = requests.post(endpoint, data=payload, headers=headers)
-    
+    # Send the payload as x-www-form-urlencoded
+    response = requests.post(endpoint, data=payload)  # Use 'data' instead of 'json'
+
     # Debugging: Print full response content for troubleshooting
     if response.status_code == 200:
         token = response.json().get("access_token")
