@@ -15,54 +15,51 @@ expiry_date = st.date_input("Select Expiry Date", min_value=datetime.today())
 strike_price = st.number_input("Enter Strike Price", min_value=0, value=53700)
 option_type = st.selectbox("Select Option Type", ["Call", "Put"])
 
-# Function to get BankNifty options data using Yahoo Finance (for specific option strike and type)
-def get_banknifty_ltp(strike_price, option_type):
+# Function to get BankNifty current data using Yahoo Finance
+def get_banknifty_data():
     try:
         # Fetch BankNifty data using Yahoo Finance
-        banknifty = yf.Ticker("^NSEBANK")
-        # Get options chain data (calls and puts) for BankNifty
-        options = banknifty.option_chain(datetime.today().strftime('%Y-%m-%d'))
-
-        if option_type == "Call":
-            option_data = options.calls
-        else:
-            option_data = options.puts
-
-        # Find the option contract that matches the strike price
-        matching_option = option_data[option_data['strike'] == strike_price]
-
-        if not matching_option.empty:
-            return matching_option['lastPrice'].iloc[0]
-        else:
-            return None
+        banknifty = yf.Ticker("^NSEBANK")  # ^NSEBANK is the BankNifty index symbol
+        banknifty_data = banknifty.history(period="1d", interval="1m")  # 1-minute data for the last day
+        current_price = banknifty_data["Close"].iloc[-1]  # Get the most recent closing price
+        return current_price
     except Exception as e:
-        st.write(f"Error fetching options data: {e}")
+        st.write(f"Error fetching BankNifty data: {e}")
         return None
 
-# Function to get global market data (S&P500, AAPL) using Yahoo Finance
+# Function to get global market data (S&P500, Nifty 50) using Yahoo Finance
 def get_global_market_data():
     try:
-        # Get real-time market data for S&P500 (SPY) and AAPL from Yahoo Finance
+        # Get real-time market data for S&P500 and Nifty 50
         spy = yf.Ticker("^GSPC")  # S&P 500 Index
-        aapl = yf.Ticker("AAPL")  # Apple Inc.
+        nifty = yf.Ticker("^NSEI")  # Nifty 50 Index
 
-        # Get the most recent closing price for both S&P500 and AAPL
+        # Get the most recent closing price for both S&P500 and Nifty 50
         spy_data = spy.history(period="1d", interval="1m")
-        aapl_data = aapl.history(period="1d", interval="1m")
+        nifty_data = nifty.history(period="1d", interval="1m")
 
         spy_price = spy_data["Close"].iloc[-1]  # Latest closing price for S&P500
-        aapl_price = aapl_data["Close"].iloc[-1]  # Latest closing price for AAPL
+        nifty_price = nifty_data["Close"].iloc[-1]  # Latest closing price for Nifty 50
         
-        return spy_price, aapl_price
+        return spy_price, nifty_price
     except Exception as e:
         st.write(f"Error fetching global market data: {e}")
         return None, None
 
-# Function to calculate predicted LTP based on global market correlation
-def predict_ltp(current_ltp, spy_price, aapl_price):
-    # Use a simple correlation factor based on the relationship between BankNifty and the S&P 500 + AAPL
-    # Simulated correlation factor (this can be refined with actual historical data)
-    global_sentiment_factor = (spy_price * 0.0015) + (aapl_price * 0.02)
+# Function to calculate LTP based on strike price and option type (approximation)
+def calculate_ltp(banknifty_price, strike_price, option_type):
+    if option_type == "Call":
+        # For Call Option: LTP is roughly the difference between strike price and index price
+        ltp = max(banknifty_price - strike_price, 0)  # Call options gain when the index is above strike
+    elif option_type == "Put":
+        # For Put Option: LTP is roughly the difference between strike price and index price
+        ltp = max(strike_price - banknifty_price, 0)  # Put options gain when the index is below strike
+    return round(ltp, 2)
+
+# Function to calculate predicted LTP based on global market data
+def predict_ltp(current_ltp, spy_price, nifty_price):
+    # Using a simple correlation factor based on global market and Nifty 50 (for Indian market relevance)
+    global_sentiment_factor = (spy_price * 0.0015) + (nifty_price * 0.005)
     predicted_ltp = current_ltp + global_sentiment_factor
     return round(predicted_ltp, 2)
 
@@ -89,23 +86,27 @@ def predict_profit_or_loss(predicted_ltp, ltp, option_type):
 # Main logic
 if st.button("Get Prediction"):
     # Fetch the current LTP for the selected option
-    ltp = get_banknifty_ltp(strike_price, option_type)
+    real_time_data = get_banknifty_data()
     
-    if ltp is None:
-        st.warning(f"Could not fetch LTP for strike price {strike_price} and option type {option_type}. Please try again later.")
+    if real_time_data is None:
+        st.warning("Could not fetch real-time BankNifty data. Please try again later.")
     else:
-        st.write(f"Current LTP for strike {strike_price} ({option_type} option): {ltp}")
+        st.write(f"Current BankNifty index price: {real_time_data}")
 
-        # Get global market data (S&P500 and AAPL)
-        spy_price, aapl_price = get_global_market_data()
-        if spy_price is None or aapl_price is None:
+        # Get global market data (S&P500 and Nifty 50)
+        spy_price, nifty_price = get_global_market_data()
+        if spy_price is None or nifty_price is None:
             st.warning("Could not fetch global market data. Please try again later.")
         else:
             st.write(f"Real-time S&P 500 price: {spy_price}")
-            st.write(f"Real-time AAPL price: {aapl_price}")
+            st.write(f"Real-time Nifty 50 price: {nifty_price}")
+
+            # Calculate the LTP for the selected strike price and option type (Call/Put)
+            ltp = calculate_ltp(real_time_data, strike_price, option_type)
+            st.write(f"Calculated LTP for strike {strike_price} ({option_type} option): {ltp}")
 
             # Predict the LTP for the next day based on market data
-            predicted_ltp = predict_ltp(ltp, spy_price, aapl_price)
+            predicted_ltp = predict_ltp(ltp, spy_price, nifty_price)
             st.write(f"Predicted LTP for next day: {predicted_ltp}")
 
             # Predict Stop Loss and Maximum LTP
