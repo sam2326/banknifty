@@ -3,6 +3,7 @@ import asyncio
 import websockets
 import json
 import streamlit as st
+import threading
 
 # Your new Alpaca API credentials
 api_key = "PKA1TOTBSAIUFXKRUEVG"
@@ -81,6 +82,13 @@ def predict_banknifty(price, sentiment):
     else:
         return "SELL"
 
+# Function to run the WebSocket connection in a separate thread
+def start_websocket():
+    asyncio.run(connect_to_alpaca_websocket())
+
 # Streamlit button to start real-time prediction
 if st.button("Start Real-Time Prediction"):
-    asyncio.run(connect_to_alpaca_websocket())
+    # Start the WebSocket in a separate thread to avoid blocking the Streamlit UI
+    thread = threading.Thread(target=start_websocket)
+    thread.daemon = True  # Allow the thread to exit when the main program exits
+    thread.start()
