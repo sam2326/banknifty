@@ -33,7 +33,7 @@ async def connect_to_alpaca_websocket():
             "symbols": ["AAPL", "SPY", "GOOG"]  # Modify with relevant symbols (you can add BankNifty if available)
         }
         await websocket.send(json.dumps(subscribe_message))  # Send subscribe message
-        
+
         # Debugging: Confirm subscription message
         print(f"Sent subscription message: {subscribe_message}")
 
@@ -44,6 +44,12 @@ async def connect_to_alpaca_websocket():
 
                 # Debugging: Print the entire received market data
                 print(f"Received market data: {market_data}")
+
+                # Check if the message contains any useful data
+                if "data" in market_data:
+                    print(f"Market Data Keys: {market_data.keys()}")
+                else:
+                    print("Received empty or invalid message")
 
                 # Process and predict based on real-time data
                 prediction = process_real_time_data(market_data)
@@ -58,7 +64,6 @@ def process_real_time_data(data):
     # Debugging: Check the structure of the data
     print(f"Processing data: {data}")
 
-    # Example: Check if the expected keys exist in the data before accessing them
     try:
         # Debugging: List the keys in the incoming data for inspection
         print(f"Keys in received data: {data.keys()}")
