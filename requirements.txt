@@ -1,6 +1,5 @@
-yfinance
-pandas
-numpy
-scikit-learn
-streamlit
-textblob
+alpaca-trade-api==1.4.3
+websockets==10.3
+streamlit==1.25.0
+pandas==1.5.3
+numpy==1.24.0
