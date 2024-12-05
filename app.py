@@ -30,10 +30,13 @@ async def connect_to_alpaca_websocket():
     async with websockets.connect(ws_url, extra_headers=headers) as websocket:
         subscribe_message = {
             "action": "subscribe",
-            "symbols": ["AAPL", "SPY", "GOOG"]  # Modify with relevant symbols
+            "symbols": ["AAPL", "SPY", "GOOG"]  # Modify with relevant symbols (you can add BankNifty if available)
         }
         await websocket.send(json.dumps(subscribe_message))  # Send subscribe message
         
+        # Debugging: Confirm subscription message
+        print(f"Sent subscription message: {subscribe_message}")
+
         while True:
             try:
                 message = await websocket.recv()  # Receive real-time data
@@ -59,7 +62,7 @@ def process_real_time_data(data):
     try:
         # Debugging: List the keys in the incoming data for inspection
         print(f"Keys in received data: {data.keys()}")
-        
+
         # Check if AAPL data exists in the incoming data
         if "AAPL" in data:
             price = data["AAPL"].get("price", 0)  # Safely access the price for AAPL
