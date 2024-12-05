@@ -120,8 +120,8 @@ def main():
     if st.button("Get Session Token"):
         session_token = get_session_token()
         if session_token:
-            st.success("Session Token Retrieved Successfully!")
             st.session_state.session_token = session_token
+            st.success("Session Token Retrieved Successfully!")
 
     if 'session_token' not in st.session_state:
         st.warning("Please get the session token first.")
