@@ -1,154 +1,97 @@
+import yfinance as yf
+import pandas as pd
+import numpy as np
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score
 import streamlit as st
-import requests
-import hashlib
-import datetime
-import json
+from textblob import TextBlob
 
-# Constants
-APP_KEY = "1Zn5837j4439dt5_I%601255l3w6%2328d%289"
-SECRET_KEY = "1645%24kX4a37C9lY6G90873Q3617%608%2528"
-AUTHORIZATION_CODE = "49603583"  # Updated authorization code
-REDIRECT_URI = "http://localhost:3000/callback"
-BASE_URL = "https://api.icicidirect.com"
+# Function to fetch BankNifty historical data from Yahoo Finance
+def get_banknifty_data():
+    banknifty = yf.download("^NSEBANK", start="2015-01-01", end="2023-12-31")
+    banknifty['Returns'] = banknifty['Adj Close'].pct_change()
+    return banknifty
 
-# Generate Checksum Function
-def generate_checksum(timestamp, json_data, secret_key):
-    raw_data = timestamp + json_data + secret_key
-    return hashlib.sha256(raw_data.encode('utf-8')).hexdigest()
+# Function to fetch S&P 500 global market data from Yahoo Finance
+def get_global_market_data():
+    sp500 = yf.download("^GSPC", start="2015-01-01", end="2023-12-31")
+    sp500['Returns'] = sp500['Adj Close'].pct_change()
+    return sp500
 
-# Exchange Authorization Code for Session Token
-def get_session_token():
-    endpoint = f"{BASE_URL}/oauth2/token"
-    payload = {
-        "grant_type": "authorization_code",
-        "code": AUTHORIZATION_CODE,
-        "redirect_uri": REDIRECT_URI,
-        "client_id": APP_KEY,
-        "client_secret": SECRET_KEY
-    }
+# Sentiment Analysis using TextBlob
+def get_sentiment(news_headline):
+    analysis = TextBlob(news_headline)
+    return analysis.sentiment.polarity
 
-    # Debugging: Print the payload and headers
-    st.write("Payload:", payload)
-
-    # Send the payload as x-www-form-urlencoded
-    response = requests.post(endpoint, data=payload)  # Use 'data' instead of 'json'
-
-    # Debugging: Print full response content for troubleshooting
-    if response.status_code == 200:
-        token = response.json().get("access_token")
-        if token:
-            return token
-        else:
-            st.error("Error: Token not found in response.")
-            return None
-    else:
-        st.error(f"Failed to get session token: {response.status_code} - {response.text}")
-        return None
-
-# Fetch Live Data for BankNifty
-def get_banknifty_data(session_token):
-    endpoint = f"{BASE_URL}/equity/getquote"
-    timestamp = datetime.datetime.now().strftime("%d-%b-%Y %H:%M:%S")
-    payload = {
-        "SessionToken": session_token,
-        "Idirect_Userid": "NIFTY123",  # Replace with your ICICI user ID
-        "STCK_CD": "BANKNIFTY"
-    }
-    json_data = json.dumps(payload)
-    checksum = generate_checksum(timestamp, json_data, SECRET_KEY)
-
-    headers = {
-        "Content-Type": "application/json",
-        "AppKey": APP_KEY,
-        "Checksum": checksum
-    }
-    response = requests.post(endpoint, json=payload, headers=headers)
+# Preprocess BankNifty data and create features for model training
+def preprocess_data(banknifty_data):
+    banknifty_data['SMA_10'] = banknifty_data['Adj Close'].rolling(window=10).mean()
+    banknifty_data['SMA_50'] = banknifty_data['Adj Close'].rolling(window=50).mean()
+    banknifty_data['Volatility'] = banknifty_data['Returns'].rolling(window=10).std()
+    banknifty_data['Sentiment'] = np.random.choice([1, -1], size=len(banknifty_data))  # Placeholder sentiment
     
-    if response.status_code == 200:
-        data = response.json().get("Success")
-        if data:
-            return data
-        else:
-            st.error("No data found in response.")
-            return None
-    else:
-        st.error(f"Failed to fetch BankNifty data: {response.text}")
-        return None
+    banknifty_data.dropna(inplace=True)
+    
+    X = banknifty_data[['SMA_10', 'SMA_50', 'Volatility', 'Sentiment']]
+    y = (banknifty_data['Returns'].shift(-1) > 0).astype(int)  # 1 if price goes up next day, else 0
+    
+    return X, y
 
-# Dummy Prediction Model (Replace with your ML model)
-def predict_banknifty(data):
-    # Example: If the price increases, predict "BUY", else "SELL"
-    ltp = float(data.get("LTP", 0))
-    day_open = float(data.get("DayOpen", 0))
-    if ltp > day_open:
-        return "BUY"
-    else:
-        return "SELL"
+# Function to train a Random Forest model for prediction
+def train_model(X, y):
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
+    
+    model = RandomForestClassifier(n_estimators=100)
+    model.fit(X_train, y_train)
+    
+    y_pred = model.predict(X_test)
+    
+    accuracy = accuracy_score(y_test, y_pred)
+    print(f"Model Accuracy: {accuracy * 100:.2f}%")
+    
+    return model
 
-# Place Order
-def place_order(session_token, action):
-    endpoint = f"{BASE_URL}/equity/placement"
-    timestamp = datetime.datetime.now().strftime("%d-%b-%Y %H:%M:%S")
-    payload = {
-        "SessionToken": session_token,
-        "Idirect_Userid": "NIFTY123",  # Replace with your ICICI user ID
-        "order_stock_cd": "BANKNIFTY",
-        "order_xchng_cd": "NSE",
-        "order_product": "CASH",
-        "order_type": "M",  # Market Order
-        "order_validity": "T",  # Day
-        "order_quantity": "1",  # Adjust quantity
-        "order_rate": None,
-        "order_flow": "B" if action == "BUY" else "S",
-        "order_stp_loss_price": None,
-        "order_disclosed_qty": "0",
-        "order_trade_dt": timestamp.split(" ")[0]
-    }
-    json_data = json.dumps(payload)
-    checksum = generate_checksum(timestamp, json_data, SECRET_KEY)
+# Backtesting the model to simulate performance
+def backtest(model, X, y):
+    y_pred = model.predict(X)
+    correct_predictions = np.sum(y_pred == y)
+    accuracy = correct_predictions / len(y)
+    
+    print(f"Backtesting Accuracy: {accuracy * 100:.2f}%")
 
-    headers = {
-        "Content-Type": "application/json",
-        "AppKey": APP_KEY,
-        "Checksum": checksum
-    }
-    response = requests.post(endpoint, json=payload, headers=headers)
-    if response.status_code == 200:
-        st.success(f"Order placed successfully: {response.json()}")
-    else:
-        st.error(f"Failed to place order: {response.text}")
-
-# Streamlit Application
+# Streamlit App to display results
 def main():
-    st.title('BankNifty Prediction and Trading App')
-
-    # Step 1: Button to get session token
-    if st.button("Get Session Token"):
-        session_token = get_session_token()
-        if session_token:
-            st.session_state.session_token = session_token
-            st.success("Session Token Retrieved Successfully!")
-
-    if 'session_token' not in st.session_state:
-        st.warning("Please get the session token first.")
-        return
-
-    session_token = st.session_state.session_token
-
-    # Step 2: Fetch BankNifty data
-    if st.button("Get BankNifty Data"):
-        data = get_banknifty_data(session_token)
-        if data:
-            st.write(data)
-
-    # Step 3: Predict action based on data
-    if 'data' in st.session_state:
-        action = predict_banknifty(data)
-        st.write(f"Predicted Action: {action}")
-
-        # Step 4: Place Order Button
-        if st.button(f"Place {action} Order"):
-            place_order(session_token, action)
+    st.title("BankNifty Prediction Based on Global Market Conditions")
+    
+    st.markdown("""
+    This app predicts the next day's movement of BankNifty based on global market conditions and sentiment.
+    The prediction is based on a machine learning model trained with historical BankNifty and global market data.
+    """)
+    
+    if st.button("Fetch and Predict for Tomorrow"):
+        # Step 1: Fetch BankNifty and global market data
+        banknifty_data = get_banknifty_data()
+        sp500_data = get_global_market_data()
+        
+        # Step 2: Preprocess data and train model
+        X, y = preprocess_data(banknifty_data)
+        model = train_model(X, y)
+        
+        # Step 3: Simulate sentiment (For now, using random sentiment)
+        sentiment = np.random.choice([1, -1])  # Replace with real sentiment analysis
+        
+        # Step 4: Predict for the next day
+        latest_data = X.tail(1)
+        prediction = model.predict(latest_data)
+        prediction_label = "BUY" if prediction == 1 else "SELL"
+        
+        # Step 5: Display the prediction and sentiment
+        st.write(f"Prediction for tomorrow: {prediction_label}")
+        st.write(f"Simulated Sentiment Score: {sentiment}")
+        
+        # Backtest the model (optional)
+        backtest(model, X, y)
 
 if __name__ == "__main__":
     main()
