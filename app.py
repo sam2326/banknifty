@@ -43,11 +43,11 @@ def get_banknifty_data():
 def get_global_market_data():
     try:
         # Get real-time market data for S&P500 (SPY) and AAPL from Alpaca
-        spy = api.get_last_trade("SPY")  # S&P 500 ETF
-        aapl = api.get_last_trade("AAPL")  # Apple Inc.
+        spy_quote = api.get_last_quote("SPY")  # S&P 500 ETF
+        aapl_quote = api.get_last_quote("AAPL")  # Apple Inc.
 
-        spy_price = spy.price
-        aapl_price = aapl.price
+        spy_price = spy_quote.askprice  # Latest ask price for SPY
+        aapl_price = aapl_quote.askprice  # Latest ask price for AAPL
         return spy_price, aapl_price
     except Exception as e:
         st.write(f"Error fetching global market data from Alpaca: {e}")
