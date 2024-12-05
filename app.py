@@ -82,38 +82,34 @@ def predict_profit_or_loss(predicted_ltp, ltp, option_type):
 
 # Main logic
 if st.button("Get Prediction"):
-    try:
-        # Get BankNifty real-time data
-        real_time_data = get_banknifty_data()
-        if real_time_data is None:
-            return  # Exit if real-time data is not available
-
+    # Get BankNifty real-time data
+    real_time_data = get_banknifty_data()
+    if real_time_data is None:
+        st.warning("Could not fetch real-time BankNifty data. Please try again later.")
+    else:
         st.write(f"Real-time BankNifty index price: {real_time_data}")
 
         # Get global market data (S&P500 and AAPL)
         spy_price, aapl_price = get_global_market_data()
         if spy_price is None or aapl_price is None:
-            return  # Exit if global market data is not available
+            st.warning("Could not fetch global market data. Please try again later.")
+        else:
+            st.write(f"Real-time S&P 500 price: {spy_price}")
+            st.write(f"Real-time AAPL price: {aapl_price}")
 
-        st.write(f"Real-time S&P 500 price: {spy_price}")
-        st.write(f"Real-time AAPL price: {aapl_price}")
+            # Global market sentiment factor (based on S&P 500 and AAPL)
+            global_sentiment_factor = (spy_price + aapl_price) / 100000  # Simple example factor
 
-        # Global market sentiment factor (based on S&P 500 and AAPL)
-        global_sentiment_factor = (spy_price + aapl_price) / 100000  # Simple example factor
+            # Predict the LTP for the next day
+            predicted_ltp = predict_ltp(real_time_data, global_sentiment_factor)
+            st.write(f"Predicted LTP for next day: {predicted_ltp}")
 
-        # Predict the LTP for the next day
-        predicted_ltp = predict_ltp(real_time_data, global_sentiment_factor)
-        st.write(f"Predicted LTP for next day: {predicted_ltp}")
+            # Predict Stop Loss and Maximum LTP
+            stop_loss, max_ltp = predict_stop_loss_and_max_ltp(predicted_ltp)
+            st.write(f"Stop Loss: {stop_loss}")
+            st.write(f"Maximum LTP: {max_ltp}")
 
-        # Predict Stop Loss and Maximum LTP
-        stop_loss, max_ltp = predict_stop_loss_and_max_ltp(predicted_ltp)
-        st.write(f"Stop Loss: {stop_loss}")
-        st.write(f"Maximum LTP: {max_ltp}")
-
-        # Predict Profit or Loss
-        recommendation, profit_loss = predict_profit_or_loss(predicted_ltp, ltp, option_type)
-        st.write(f"Recommendation: {recommendation}")
-        st.write(f"Expected Profit/Loss: {profit_loss}")
-    
-    except Exception as e:
-        st.write(f"Error: {e}")
+            # Predict Profit or Loss
+            recommendation, profit_loss = predict_profit_or_loss(predicted_ltp, ltp, option_type)
+            st.write(f"Recommendation: {recommendation}")
+            st.write(f"Expected Profit/Loss: {profit_loss}")
