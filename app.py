@@ -1,111 +1,94 @@
 import alpaca_trade_api as tradeapi
-import asyncio
-import websockets
-import json
 import streamlit as st
-import threading
+import pandas as pd
+import numpy as np
+from datetime import datetime, timedelta
+import random
 
-# Your new Alpaca API credentials
-api_key = "PKA1TOTBSAIUFXKRUEVG"
-api_secret = "ZU7hlWX9OZR2eY01GgXSeHdoRn5DKoSyuT8fhYyY"
-ws_url = "wss://stream.data.alpaca.markets/v2/iex"  # Alpaca WebSocket URL for real-time data
+# Alpaca API credentials
+api_key = "PK5GIYLW7TNM8DYGRYA6"
+api_secret = "CgPffxsbhFZBATQ2F79C9OGONDVw5RHoray5TBPT"
+endpoint = "https://paper-api.alpaca.markets/v2"
 
-# Initialize Alpaca REST API
-api = tradeapi.REST(api_key, api_secret, base_url="https://paper-api.alpaca.markets")
+# Initialize Alpaca API connection
+api = tradeapi.REST(api_key, api_secret, base_url=endpoint)
 
 # Streamlit UI setup
-st.title("Real-Time BankNifty Prediction App")
-st.write("This app predicts the next day's movement of BankNifty based on real-time market data.")
+st.title("BankNifty Options Prediction for Intraday Trading")
+st.write("""
+    This app predicts the next day's movement for BankNifty based on real-time market data.
+    Enter the details for the BankNifty option you're interested in.
+""")
 
-prediction_display = st.empty()  # Placeholder to update prediction dynamically
+# Input fields for the user
+ticker = st.selectbox("Select Ticker", ["BANKNIFTY", "NIFTY", "SP500"])  # Example tickers
+expiry_date = st.date_input("Select Expiry Date", min_value=datetime.today())
+strike_price = st.number_input("Enter Strike Price", min_value=0, value=35000)
+option_type = st.selectbox("Select Option Type", ["Call", "Put"])
+ltp = st.number_input("Enter Last Traded Price (LTP)", min_value=0, value=100)
 
-# Function to connect to Alpaca WebSocket and receive real-time data
-async def connect_to_alpaca_websocket():
-    headers = {
-        "APCA-API-KEY-ID": api_key,
-        "APCA-API-SECRET-KEY": api_secret
-    }
+# Function to get the real-time market data from Alpaca (e.g., NIFTY, S&P500)
+def get_real_time_data():
+    # For the sake of the example, we simulate real-time data
+    # Alpaca supports stocks and indices, so we fetch real-time data for relevant symbols like NIFTY, S&P500
+    if ticker == "BANKNIFTY":
+        symbol = "BANKNIFTY"
+    elif ticker == "NIFTY":
+        symbol = "NIFTY"
+    else:
+        symbol = "SPY"  # Example: S&P 500 ETF
+    
+    # Fetch the real-time price for the symbol
+    market_data = api.get_last_trade(symbol)
+    return market_data.price
 
-    # Connect to Alpaca WebSocket
-    async with websockets.connect(ws_url, extra_headers=headers) as websocket:
-        subscribe_message = {
-            "action": "subscribe",
-            "symbols": ["AAPL", "SPY", "GOOG"]  # Modify with relevant symbols (you can add BankNifty if available)
-        }
-        await websocket.send(json.dumps(subscribe_message))  # Send subscribe message
+# Simulate prediction of the LTP for the next day based on current market conditions
+def predict_ltp(current_price):
+    # Simulating a prediction based on real-time market data (you can enhance this with actual ML models)
+    market_change_percentage = random.uniform(-0.02, 0.02)  # Random change between -2% to +2%
+    predicted_ltp = current_price * (1 + market_change_percentage)
+    return round(predicted_ltp, 2)
 
-        # Debugging: Confirm subscription message
-        print(f"Sent subscription message: {subscribe_message}")
+# Simulate prediction of stop loss and maximum LTP
+def predict_stop_loss_and_max_ltp(predicted_ltp):
+    # Example logic to predict stop loss and maximum LTP (based on market volatility)
+    stop_loss = predicted_ltp * 0.98  # 2% below the predicted LTP
+    max_ltp = predicted_ltp * 1.02  # 2% above the predicted LTP
+    return round(stop_loss, 2), round(max_ltp, 2)
 
-        while True:
-            try:
-                message = await websocket.recv()  # Receive real-time data
-                market_data = json.loads(message)  # Parse the data
-
-                # Debugging: Print the entire received market data
-                print(f"Received market data: {market_data}")
-
-                # Check if the message contains any useful data
-                if "data" in market_data:
-                    print(f"Market Data Keys: {market_data.keys()}")
-                else:
-                    print("Received empty or invalid message")
-
-                # Process and predict based on real-time data
-                prediction = process_real_time_data(market_data)
-                prediction_display.write(f"Prediction: {prediction}")  # Update Streamlit UI with prediction
-
-            except Exception as e:
-                print(f"Error processing message: {e}")
-                continue  # Skip the message if there's an error
-
-# Function to process real-time market data
-def process_real_time_data(data):
-    # Debugging: Check the structure of the data
-    print(f"Processing data: {data}")
-
-    try:
-        # Debugging: List the keys in the incoming data for inspection
-        print(f"Keys in received data: {data.keys()}")
-
-        # Check if AAPL data exists in the incoming data
-        if "AAPL" in data:
-            price = data["AAPL"].get("price", 0)  # Safely access the price for AAPL
-            sentiment = 1  # Placeholder sentiment (can be fetched from NLP models)
-
-            # Predict BankNifty movement based on real-time data
-            return predict_banknifty(price, sentiment)
+# Predict if the option is profitable to buy
+def predict_profit_or_loss(predicted_ltp, ltp, option_type):
+    if option_type == "Call":
+        if predicted_ltp > ltp:
+            return "Profit", predicted_ltp - ltp
         else:
-            print("AAPL data not found in message")
-            return "No AAPL Data"
+            return "Loss", ltp - predicted_ltp
+    else:  # Put Option
+        if predicted_ltp < ltp:
+            return "Profit", ltp - predicted_ltp
+        else:
+            return "Loss", predicted_ltp - ltp
 
-    except KeyError as e:
-        print(f"Error accessing key {e} in market data")
-        return "Error processing data"
+# Main logic
+if st.button("Get Prediction"):
+    try:
+        # Get real-time market data
+        real_time_data = get_real_time_data()
+        st.write(f"Real-time price of {ticker}: {real_time_data}")
 
-# Function to predict BankNifty's next movement based on live data
-def predict_banknifty(price, sentiment):
-    if sentiment > 0 and price > 35000:  # Example threshold for prediction
-        return "BUY"
-    else:
-        return "SELL"
+        # Predict the LTP for the next day
+        predicted_ltp = predict_ltp(real_time_data)
+        st.write(f"Predicted LTP for next day: {predicted_ltp}")
 
-# Function to run the WebSocket connection in a separate thread
-def start_websocket():
-    asyncio.run(connect_to_alpaca_websocket())
+        # Predict Stop Loss and Maximum LTP
+        stop_loss, max_ltp = predict_stop_loss_and_max_ltp(predicted_ltp)
+        st.write(f"Stop Loss: {stop_loss}")
+        st.write(f"Maximum LTP: {max_ltp}")
 
-# Streamlit button to start real-time prediction
-if "websocket_thread" not in st.session_state:
-    st.session_state.websocket_thread = None
-
-if st.button("Start Real-Time Prediction"):
-    if st.session_state.websocket_thread is None or not st.session_state.websocket_thread.is_alive():
-        # Start the WebSocket in a separate thread to avoid blocking the Streamlit UI
-        thread = threading.Thread(target=start_websocket)
-        thread.daemon = True  # Allow the thread to exit when the main program exits
-        thread.start()
-        st.session_state.websocket_thread = thread  # Store the thread reference in session_state
-        st.write("WebSocket connection started! Listening for real-time data...")
-
-    else:
-        st.write("WebSocket connection is already running.")
+        # Predict Profit or Loss
+        recommendation, profit_loss = predict_profit_or_loss(predicted_ltp, ltp, option_type)
+        st.write(f"Recommendation: {recommendation}")
+        st.write(f"Expected Profit/Loss: {profit_loss}")
+    
+    except Exception as e:
+        st.write(f"Error: {e}")
