@@ -21,7 +21,7 @@ st.write("""
 """)
 
 # Input fields for the user
-ticker = st.selectbox("Select Ticker", ["BANKNIFTY", "NIFTY", "SP500"])  # Example tickers
+ticker = st.selectbox("Select Ticker", ["BANKNIFTY", "SPY", "AAPL", "GOOG"])  # Example tickers, BankNifty isn't directly available
 expiry_date = st.date_input("Select Expiry Date", min_value=datetime.today())
 strike_price = st.number_input("Enter Strike Price", min_value=0, value=35000)
 option_type = st.selectbox("Select Option Type", ["Call", "Put"])
@@ -29,18 +29,18 @@ ltp = st.number_input("Enter Last Traded Price (LTP)", min_value=0, value=100)
 
 # Function to get the real-time market data from Alpaca (e.g., NIFTY, S&P500)
 def get_real_time_data():
-    # For the sake of the example, we simulate real-time data
-    # Alpaca supports stocks and indices, so we fetch real-time data for relevant symbols like NIFTY, S&P500
-    if ticker == "BANKNIFTY":
-        symbol = "BANKNIFTY"
-    elif ticker == "NIFTY":
-        symbol = "NIFTY"
-    else:
-        symbol = "SPY"  # Example: S&P 500 ETF
-    
-    # Fetch the real-time price for the symbol
-    market_data = api.get_last_trade(symbol)
-    return market_data.price
+    try:
+        # Get real-time market data for SPY, AAPL, or any other available symbols
+        if ticker == "BANKNIFTY":
+            # BankNifty is not available directly via Alpaca, so we return a placeholder for this example
+            st.write("BankNifty data is not available from Alpaca. Please select a U.S. stock/ETF.")
+            return None
+        # Fetch the real-time price for the symbol using Alpaca's `get_last_trade`
+        market_data = api.get_last_trade(ticker)
+        return market_data.price
+    except Exception as e:
+        st.write(f"Error fetching real-time data: {e}")
+        return None
 
 # Simulate prediction of the LTP for the next day based on current market conditions
 def predict_ltp(current_price):
@@ -74,6 +74,9 @@ if st.button("Get Prediction"):
     try:
         # Get real-time market data
         real_time_data = get_real_time_data()
+        if real_time_data is None:
+            return  # Exit if real-time data is not available
+
         st.write(f"Real-time price of {ticker}: {real_time_data}")
 
         # Predict the LTP for the next day
