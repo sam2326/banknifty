@@ -1,5 +1,5 @@
 alpaca-trade-api
-websockets
+yfinance
 streamlit
 pandas
 numpy
