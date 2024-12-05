@@ -34,21 +34,41 @@ async def connect_to_alpaca_websocket():
         await websocket.send(json.dumps(subscribe_message))  # Send subscribe message
         
         while True:
-            message = await websocket.recv()  # Receive real-time data
-            market_data = json.loads(message)  # Parse the data
-            
-            # Process and predict based on real-time data
-            prediction = process_real_time_data(market_data)
-            prediction_display.write(f"Prediction: {prediction}")  # Update Streamlit UI with prediction
+            try:
+                message = await websocket.recv()  # Receive real-time data
+                market_data = json.loads(message)  # Parse the data
+
+                # Debugging: Print the structure of the incoming data
+                print(f"Received market data: {market_data}")
+
+                # Process and predict based on real-time data
+                prediction = process_real_time_data(market_data)
+                prediction_display.write(f"Prediction: {prediction}")  # Update Streamlit UI with prediction
+
+            except Exception as e:
+                print(f"Error processing message: {e}")
+                continue  # Skip the message if there's an error
 
 # Function to process real-time market data
 def process_real_time_data(data):
-    # Extract real-time price and sentiment (you can modify the logic as needed)
-    price = data.get("AAPL", {}).get("price", 0)  # Example for AAPL, modify accordingly
-    sentiment = 1  # Placeholder sentiment (can be fetched from NLP models)
+    # Debugging: Check the structure of the data
+    print(f"Processing data: {data}")
     
-    # Predict BankNifty movement based on real-time data
-    return predict_banknifty(price, sentiment)
+    # Example: Check if the expected keys exist in the data before accessing them
+    try:
+        if "AAPL" in data:
+            price = data["AAPL"].get("price", 0)  # Safely access the price for AAPL
+            sentiment = 1  # Placeholder sentiment (you can add NLP-based sentiment analysis here)
+
+            # Predict BankNifty movement based on real-time data
+            return predict_banknifty(price, sentiment)
+        else:
+            print("AAPL data not found in message")
+            return "No AAPL Data"
+
+    except KeyError as e:
+        print(f"Error accessing key {e} in market data")
+        return "Error processing data"
 
 # Function to predict BankNifty's next movement based on live data
 def predict_banknifty(price, sentiment):
