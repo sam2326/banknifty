@@ -38,7 +38,7 @@ async def connect_to_alpaca_websocket():
                 message = await websocket.recv()  # Receive real-time data
                 market_data = json.loads(message)  # Parse the data
 
-                # Debugging: Print the structure of the incoming data
+                # Debugging: Print the entire received market data
                 print(f"Received market data: {market_data}")
 
                 # Process and predict based on real-time data
@@ -53,12 +53,16 @@ async def connect_to_alpaca_websocket():
 def process_real_time_data(data):
     # Debugging: Check the structure of the data
     print(f"Processing data: {data}")
-    
+
     # Example: Check if the expected keys exist in the data before accessing them
     try:
+        # Debugging: List the keys in the incoming data for inspection
+        print(f"Keys in received data: {data.keys()}")
+        
+        # Check if AAPL data exists in the incoming data
         if "AAPL" in data:
             price = data["AAPL"].get("price", 0)  # Safely access the price for AAPL
-            sentiment = 1  # Placeholder sentiment (you can add NLP-based sentiment analysis here)
+            sentiment = 1  # Placeholder sentiment (can be fetched from NLP models)
 
             # Predict BankNifty movement based on real-time data
             return predict_banknifty(price, sentiment)
