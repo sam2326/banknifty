@@ -1,18 +1,9 @@
-import alpaca_trade_api as tradeapi
 import yfinance as yf
 import streamlit as st
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 import random
-
-# Alpaca API credentials
-api_key = "PK5GIYLW7TNM8DYGRYA6"
-api_secret = "CgPffxsbhFZBATQ2F79C9OGONDVw5RHoray5TBPT"
-endpoint = "https://paper-api.alpaca.markets/v2"
-
-# Initialize Alpaca API connection
-api = tradeapi.REST(api_key, api_secret, base_url=endpoint)
 
 # Streamlit UI setup
 st.title("BankNifty Options Prediction for Intraday Trading")
@@ -39,18 +30,23 @@ def get_banknifty_data():
         st.write(f"Error fetching BankNifty data: {e}")
         return None
 
-# Function to get real-time global market data (S&P500, AAPL) from Alpaca
+# Function to get global market data (S&P500, AAPL) using Yahoo Finance
 def get_global_market_data():
     try:
-        # Get real-time market data for S&P500 (SPY) and AAPL from Alpaca
-        spy_quote = api.get_last_quote("SPY")  # S&P 500 ETF
-        aapl_quote = api.get_last_quote("AAPL")  # Apple Inc.
+        # Get real-time market data for S&P500 (SPY) and AAPL from Yahoo Finance
+        spy = yf.Ticker("^GSPC")  # S&P 500 Index
+        aapl = yf.Ticker("AAPL")  # Apple Inc.
 
-        spy_price = spy_quote.askprice  # Latest ask price for SPY
-        aapl_price = aapl_quote.askprice  # Latest ask price for AAPL
+        # Get the most recent closing price for both S&P500 and AAPL
+        spy_data = spy.history(period="1d", interval="1m")
+        aapl_data = aapl.history(period="1d", interval="1m")
+
+        spy_price = spy_data["Close"].iloc[-1]  # Latest closing price for S&P500
+        aapl_price = aapl_data["Close"].iloc[-1]  # Latest closing price for AAPL
+        
         return spy_price, aapl_price
     except Exception as e:
-        st.write(f"Error fetching global market data from Alpaca: {e}")
+        st.write(f"Error fetching global market data: {e}")
         return None, None
 
 # Simulate prediction of the LTP for the next day based on current market conditions
