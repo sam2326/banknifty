@@ -1,6 +1,6 @@
 yfinance
 streamlit
-sklearn
+scikit-learn
 pandas
 numpy
 matplotlib
@@ -8,4 +8,4 @@ requests
 tensorflow
 textblob
 py_vollib
-talib
+TA-Lib
