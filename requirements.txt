@@ -7,4 +7,4 @@ transformers
 pandas
 numpy
 scikit-learn
-talib
+pandas_ta
