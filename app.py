@@ -83,28 +83,27 @@ def predict_ltp(current_ltp, spy_price, nifty_price, strike_price, banknifty_pri
     predicted_ltp = current_ltp + global_sentiment_factor + strike_impact_factor + (current_ltp * random_factor)
     return round(predicted_ltp, 2)
 
-# Function to recommend strikes based on OI and IV
-def recommend_strikes(calls, puts):
+# Function to recommend strikes based on proximity to BankNifty and liquidity (using Close Price)
+def recommend_strikes(calls, puts, banknifty_price):
     recommendations = []
 
-    # Sort strikes based on open interest and proximity to BankNifty price
+    # Calculate the proximity of each strike to the current BankNifty price
     for call, put in zip(calls, puts):
-        call_oi = call.history(period="1d")["Open Interest"].iloc[-1]
-        put_oi = put.history(period="1d")["Open Interest"].iloc[-1]
-        call_iv = call.history(period="1d")["Implied Volatility"].iloc[-1]
-        put_iv = put.history(period="1d")["Implied Volatility"].iloc[-1]
+        call_strike = call.history(period="1d")["Strike Price"].iloc[0]
+        put_strike = put.history(period="1d")["Strike Price"].iloc[0]
+        
+        # Calculate proximity (difference between the current BankNifty price and the strike price)
+        proximity_call = abs(call_strike - banknifty_price)
+        proximity_put = abs(put_strike - banknifty_price)
 
         recommendations.append({
-            'strike': call.history(period="1d")["Strike Price"].iloc[0],
-            'call_oi': call_oi,
-            'put_oi': put_oi,
-            'call_iv': call_iv,
-            'put_iv': put_iv,
-            'proximity': abs(call.history(period="1d")["Strike Price"].iloc[0] - banknifty_price)
+            'strike': call_strike,
+            'proximity_call': proximity_call,
+            'proximity_put': proximity_put
         })
 
-    # Sort by Open Interest and proximity to BankNifty
-    recommendations.sort(key=lambda x: (x['call_oi'] + x['put_oi'], x['proximity']), reverse=True)
+    # Sort the recommendations based on proximity to BankNifty
+    recommendations.sort(key=lambda x: min(x['proximity_call'], x['proximity_put']))
 
     return recommendations
 
@@ -131,10 +130,10 @@ if st.button("Get Prediction"):
             if calls is None or puts is None:
                 st.warning("Could not fetch option chain. Please try again later.")
             else:
-                recommendations = recommend_strikes(calls, puts)
-                st.write("**Recommended Strikes Based on Open Interest and IV**")
+                recommendations = recommend_strikes(calls, puts, banknifty_price)
+                st.write("**Recommended Strikes Based on Proximity to BankNifty**")
                 for rec in recommendations[:5]:  # Show top 5 recommended strikes
-                    st.write(f"Strike: {rec['strike']}, Call OI: {rec['call_oi']}, Put OI: {rec['put_oi']}, Call IV: {rec['call_iv']}, Put IV: {rec['put_iv']}, Proximity to BankNifty: {rec['proximity']}")
+                    st.write(f"Strike: {rec['strike']}, Proximity to BankNifty: {min(rec['proximity_call'], rec['proximity_put'])}")
 
                 predicted_ltp = predict_ltp(ltp, spy_price, nifty_price, strike_price, banknifty_price, india_vix)
                 st.write(f"Predicted LTP for next day: {predicted_ltp}")
