@@ -30,30 +30,38 @@ def get_banknifty_data():
         st.write(f"Error fetching BankNifty data: {e}")
         return None, None, None, None
 
-# Corrected fetch_option_chain function
-def fetch_option_chain(expiry_date):
+# Fetch option chain using NSEpy for a range of strikes
+def fetch_option_chain(expiry_date, banknifty_price):
     try:
-        # Fetch Call Options (CE) data
-        calls = get_history(
-            symbol="BANKNIFTY",
-            index=True,
-            start=date.today(),
-            end=date.today(),
-            option_type="CE",  # Call options
-            strike_price=None,  # Fetch all strikes
-            expiry_date=expiry_date
-        )
-        
-        # Fetch Put Options (PE) data
-        puts = get_history(
-            symbol="BANKNIFTY",
-            index=True,
-            start=date.today(),
-            end=date.today(),
-            option_type="PE",  # Put options
-            strike_price=None,  # Fetch all strikes
-            expiry_date=expiry_date
-        )
+        # Define a range of strikes around the current BankNifty price
+        strikes = [banknifty_price - 200, banknifty_price - 100, banknifty_price, banknifty_price + 100, banknifty_price + 200]
+
+        calls = []
+        puts = []
+
+        # Fetch data for each strike price
+        for strike in strikes:
+            call_data = get_history(
+                symbol="BANKNIFTY",
+                index=True,
+                start=date.today(),
+                end=date.today(),
+                option_type="CE",  # Call options
+                strike_price=strike,
+                expiry_date=expiry_date
+            )
+            put_data = get_history(
+                symbol="BANKNIFTY",
+                index=True,
+                start=date.today(),
+                end=date.today(),
+                option_type="PE",  # Put options
+                strike_price=strike,
+                expiry_date=expiry_date
+            )
+            
+            calls.append(call_data)
+            puts.append(put_data)
 
         return calls, puts
     except Exception as e:
@@ -66,16 +74,27 @@ def display_option_chain(calls, puts):
 
     # Display Call Options
     st.write("**Call Options**")
-    st.dataframe(calls[['Strike Price', 'Last Traded Price', 'Open Interest']])
+    for call in calls:
+        st.dataframe(call[['Strike Price', 'Last Traded Price', 'Open Interest']])
 
     # Display Put Options
     st.write("**Put Options**")
-    st.dataframe(puts[['Strike Price', 'Last Traded Price', 'Open Interest']])
+    for put in puts:
+        st.dataframe(put[['Strike Price', 'Last Traded Price', 'Open Interest']])
 
 # Main logic
 if st.button("Fetch Option Chain"):
-    calls, puts = fetch_option_chain(expiry_date)
-    if calls is None or puts is None:
-        st.warning("Could not fetch option chain. Please try again later.")
+    banknifty_price, high_price, low_price, close_price = get_banknifty_data()
+    
+    if banknifty_price is None:
+        st.warning("Could not fetch real-time BankNifty data. Please try again later.")
     else:
-        display_option_chain(calls, puts)
+        st.write(f"Current BankNifty index price: {banknifty_price}")
+        st.write(f"High Price: {high_price}, Low Price: {low_price}, Close Price: {close_price}")
+
+        # Fetch option chain for dynamic strikes
+        calls, puts = fetch_option_chain(expiry_date, banknifty_price)
+        if calls is None or puts is None:
+            st.warning("Could not fetch option chain. Please try again later.")
+        else:
+            display_option_chain(calls, puts)
