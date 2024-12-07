@@ -1,5 +1,11 @@
-streamlit
 yfinance
-nsepy
+streamlit
+sklearn
 pandas
 numpy
+matplotlib
+requests
+tensorflow
+textblob
+py_vollib
+talib
