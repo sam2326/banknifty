@@ -55,14 +55,14 @@ def get_market_data():
 # Function to fetch option chain data using NSEpy
 def fetch_option_chain(expiry_date, banknifty_price):
     try:
-        # Get the expiry date for BankNifty options manually based on the month and year
+        # Get the expiry date for BankNifty options
         year = expiry_date.year
         month = expiry_date.month
+
+        # Use NSEpy to get the expiry date (correct usage without 'symbol' argument)
+        expiry = get_expiry_date(year=year, month=month)
         
-        # Use NSEpy to get the expiry date
-        expiry = get_expiry_date(symbol="BANKNIFTY", year=year, month=month)
-        
-        # Handle the case if the expiry date is not found
+        # Handle case if expiry date is not found
         if not expiry:
             st.write(f"No expiry date found for BankNifty options in {month}/{year}")
             return None
