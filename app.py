@@ -2,6 +2,9 @@ import yfinance as yf
 import streamlit as st
 from datetime import datetime
 import random
+from nsepy import get_history
+from nsepy.derivatives import get_expiry_date
+import pandas as pd
 
 # Streamlit UI setup
 st.title("BankNifty Options Prediction for Intraday Trading with Dynamic Strike Recommendations")
@@ -49,25 +52,27 @@ def get_market_data():
         st.write(f"Error fetching market data: {e}")
         return None, None, None
 
-# Function to fetch Option Chain Data (Calls and Puts)
+# Function to fetch option chain data using NSEpy
 def fetch_option_chain(expiry_date, banknifty_price):
     try:
+        # Get expiry date for BankNifty options
+        expiry = get_expiry_date(symbol="BANKNIFTY", year=expiry_date.year, month=expiry_date.month)
+
+        # Define a range of strikes around the current BankNifty price
         strikes = [banknifty_price - 200, banknifty_price - 100, banknifty_price, banknifty_price + 100, banknifty_price + 200]
 
-        calls = []
-        puts = []
-
+        # Fetch option chain for Calls and Puts from NSEpy
+        option_chain = []
         for strike in strikes:
-            call_data = yf.Ticker(f"BANKNIFTY{strike}CE")
-            put_data = yf.Ticker(f"BANKNIFTY{strike}PE")
+            call_data = get_history(symbol="BANKNIFTY", index=True, start=expiry_date, end=expiry_date, option_type="CE", strike_price=strike, expiry_date=expiry)
+            put_data = get_history(symbol="BANKNIFTY", index=True, start=expiry_date, end=expiry_date, option_type="PE", strike_price=strike, expiry_date=expiry)
 
-            calls.append(call_data)
-            puts.append(put_data)
+            option_chain.append((call_data, put_data))
 
-        return calls, puts
+        return option_chain
     except Exception as e:
         st.write(f"Error fetching option chain: {e}")
-        return None, None
+        return None
 
 # Function to calculate predicted LTP
 def predict_ltp(current_ltp, spy_price, nifty_price, strike_price, banknifty_price, india_vix):
@@ -84,26 +89,26 @@ def predict_ltp(current_ltp, spy_price, nifty_price, strike_price, banknifty_pri
     return round(predicted_ltp, 2)
 
 # Function to recommend strikes based on proximity to BankNifty
-def recommend_strikes(calls, puts, banknifty_price):
+def recommend_strikes(option_chain, banknifty_price):
     recommendations = []
 
-    # Calculate the proximity of each strike to the current BankNifty price
-    for call, put in zip(calls, puts):
-        # Extract strike price from the ticker symbol (e.g., BANKNIFTY53700CE -> 53700)
-        call_strike = int(call.info['symbol'][8:13])  # Extract strike from ticker symbol (position may vary based on the option format)
-        put_strike = int(put.info['symbol'][8:13])  # Extract strike from ticker symbol
+    # Calculate proximity of each strike to the current BankNifty price
+    for call_data, put_data in option_chain:
+        if not call_data.empty and not put_data.empty:
+            call_strike = call_data['Strike Price'].iloc[0]
+            put_strike = put_data['Strike Price'].iloc[0]
 
-        # Calculate proximity (difference between the current BankNifty price and the strike price)
-        proximity_call = abs(call_strike - banknifty_price)
-        proximity_put = abs(put_strike - banknifty_price)
+            # Calculate proximity to BankNifty
+            proximity_call = abs(call_strike - banknifty_price)
+            proximity_put = abs(put_strike - banknifty_price)
 
-        recommendations.append({
-            'strike': call_strike,
-            'proximity_call': proximity_call,
-            'proximity_put': proximity_put
-        })
+            recommendations.append({
+                'strike': call_strike,
+                'proximity_call': proximity_call,
+                'proximity_put': proximity_put
+            })
 
-    # Sort the recommendations based on proximity to BankNifty
+    # Sort the recommendations by proximity to BankNifty price
     recommendations.sort(key=lambda x: min(x['proximity_call'], x['proximity_put']))
 
     return recommendations
@@ -127,11 +132,11 @@ if st.button("Get Prediction"):
             st.write(f"Manually input LTP: {ltp}")
 
             # Fetch option chain for dynamic strikes
-            calls, puts = fetch_option_chain(expiry_date, banknifty_price)
-            if calls is None or puts is None:
+            option_chain = fetch_option_chain(expiry_date, banknifty_price)
+            if option_chain is None:
                 st.warning("Could not fetch option chain. Please try again later.")
             else:
-                recommendations = recommend_strikes(calls, puts, banknifty_price)
+                recommendations = recommend_strikes(option_chain, banknifty_price)
                 st.write("**Recommended Strikes Based on Proximity to BankNifty**")
                 for rec in recommendations[:5]:  # Show top 5 recommended strikes
                     st.write(f"Strike: {rec['strike']}, Proximity to BankNifty: {min(rec['proximity_call'], rec['proximity_put'])}")
