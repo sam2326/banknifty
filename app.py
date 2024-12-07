@@ -7,13 +7,38 @@ from torch.nn.functional import softmax
 import requests
 from textblob import TextBlob
 from datetime import datetime, timedelta
+import time
 
 # Streamlit UI setup
+st.set_page_config(page_title="Enhanced Multi-Index Options Prediction", layout="wide")
+
+# Title and description
 st.title("Enhanced Multi-Index Options Prediction App")
-st.write("""
-    This app predicts the next day's movement for options based on real-time market data, including sentiment analysis.
+st.markdown("""
+    This app predicts the next day's movement for options based on real-time market data, including sentiment analysis and machine learning predictions.
     You can select multiple indices or stocks like **BankNifty**, **Nifty 50**, **Reliance**, and more.
 """)
+
+# Styling the components
+st.markdown(
+    """
+    <style>
+    .css-18e3th9 {
+        background-color: #f4f4f4;
+    }
+    .stButton>button {
+        background-color: #007bff;
+        color: white;
+        padding: 10px;
+        font-size: 16px;
+        border-radius: 5px;
+    }
+    .stSelectbox>div {
+        font-size: 16px;
+    }
+    </style>
+    """, unsafe_allow_html=True
+)
 
 # Supported Tickers
 SUPPORTED_TICKERS = {
@@ -72,7 +97,6 @@ def fetch_sp500_data():
 # Function to get news sentiment for a given index/stock
 def get_news_sentiment(ticker_name):
     api_key = "990f863a4f65430a99f9b0cac257f432"  # Your NewsAPI key
-    # Modify the query to include broader market-related terms
     url = f'https://newsapi.org/v2/everything?q={ticker_name} OR RBI OR "interest rates" OR "monetary policy" OR "banking sector" OR "GDP growth" OR "inflation" OR "earnings report" OR "trade wars" OR "interest rate hikes" OR "acquisitions" OR "merger" OR "quarterly results"&apiKey={api_key}'
 
     try:
@@ -95,16 +119,13 @@ def get_news_sentiment(ticker_name):
 # Function to calculate sentiment score from headlines
 def get_sentiment_score(news_headlines):
     sentiment_score = 0
-    # Ensure that headlines are valid and not empty
     for headline in news_headlines:
         try:
-            # Check if headline is a valid string and perform sentiment analysis
             if isinstance(headline, str) and headline.strip():
                 sentiment_score += TextBlob(headline).sentiment.polarity
         except Exception as e:
             st.write(f"Error analyzing sentiment for headline: {headline}. Error: {e}")
     
-    # Avoid division by zero if there are no valid headlines
     return sentiment_score / len(news_headlines) if news_headlines else 0
 
 # Function to predict LTP for the selected ticker
