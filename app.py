@@ -45,12 +45,52 @@ def fetch_ticker_data(ticker):
         st.write(f"Error fetching data for {ticker}: {e}")
         return None
 
+# Function to fetch S&P 500 data
+def fetch_sp500_data():
+    try:
+        sp500 = yf.Ticker("^GSPC")
+        data = sp500.history(period="1d", interval="1m")
+        current_sp500_price = data["Close"].iloc[-1]
+        return current_sp500_price
+    except Exception as e:
+        st.write(f"Error fetching S&P 500 data: {e}")
+        return None
+
+# Function to get news sentiment score for a given index/stock
+def get_news_sentiment(ticker_name):
+    api_key = "990f863a4f65430a99f9b0cac257f432"  # Your NewsAPI key
+    url = f'https://newsapi.org/v2/everything?q={ticker_name}&apiKey={api_key}'
+
+    try:
+        response = requests.get(url)
+        response.raise_for_status()  # Ensure the request was successful
+        data = response.json()
+
+        if 'articles' in data:
+            articles = data['articles']
+            headlines = [article['title'] for article in articles]
+            sentiment_score = get_sentiment_score(headlines)
+            return sentiment_score
+        else:
+            st.write("Error: No articles found.")
+            return 0
+    except requests.exceptions.RequestException as e:
+        st.write(f"Error fetching news: {e}")
+        return 0  # Return 0 if there's an error
+
+def get_sentiment_score(news_headlines):
+    sentiment_score = 0
+    for headline in news_headlines:
+        sentiment_score += TextBlob(headline).sentiment.polarity
+    return sentiment_score / len(news_headlines) if news_headlines else 0
+
 # Function to predict LTP for the selected ticker
-def predict_ltp(current_ltp, ticker_price, strike_price, india_vix):
-    sentiment_factor = india_vix * 0.1
+def predict_ltp(current_ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score):
+    sentiment_factor = india_vix * 0.1 + sentiment_score * 0.05
     strike_impact = (strike_price - ticker_price) * (0.01 if strike_price < ticker_price else -0.01)
+    sp500_impact = sp500_price * 0.005
     random_factor = random.uniform(-0.01, 0.02)
-    predicted_ltp = current_ltp + sentiment_factor + strike_impact + (current_ltp * random_factor)
+    predicted_ltp = current_ltp + sentiment_factor + strike_impact + sp500_impact + (current_ltp * random_factor)
     return round(predicted_ltp, 2)
 
 # Main logic for prediction
@@ -71,8 +111,19 @@ if st.button("Get Prediction"):
 
         st.write(f"India VIX: {india_vix}")
 
+        # Fetch S&P 500 data
+        sp500_price = fetch_sp500_data()
+        if sp500_price is None:
+            st.warning("Could not fetch S&P 500 data.")
+        else:
+            st.write(f"Current S&P 500 price: {sp500_price}")
+
+        # Fetch news sentiment
+        sentiment_score = get_news_sentiment(ticker_name)
+        st.write(f"Sentiment Score based on news: {sentiment_score}")
+
         # Predict LTP
-        predicted_ltp = predict_ltp(ltp, ticker_price, strike_price, india_vix)
+        predicted_ltp = predict_ltp(ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score)
         st.write(f"Predicted LTP for next day: {predicted_ltp}")
 
         # Stop Loss and Max LTP
