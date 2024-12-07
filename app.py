@@ -119,6 +119,8 @@ def predict_next_day_price(model, ltp, strike_price, spy_price, nifty_price, ind
     volatility = 0.02  # Assume a 2% daily volatility
     change = strike_price - ltp  # Strike price impact
     features = np.array([[ltp, change, volatility, spy_price, nifty_price, india_vix, sentiment_score, strike_price, 1 if option_type == 'Call' else -1]])
+    
+    # Ensure that the model expects the same number of features as it was trained on
     predicted_change = model.predict(features)[0]
     return ltp + predicted_change  # Adjusting predicted LTP based on change from manual LTP
 
