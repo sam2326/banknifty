@@ -1,7 +1,6 @@
 import yfinance as yf
 import streamlit as st
 from datetime import datetime, date
-import random
 from nsepy import get_history
 
 # Streamlit UI setup
@@ -31,23 +30,30 @@ def get_banknifty_data():
         st.write(f"Error fetching BankNifty data: {e}")
         return None, None, None, None
 
-# Fetch option chain using NSEpy
+# Corrected fetch_option_chain function
 def fetch_option_chain(expiry_date):
     try:
-        # BankNifty data for the given expiry date
-        banknifty_data = get_history(
+        # Fetch Call Options (CE) data
+        calls = get_history(
             symbol="BANKNIFTY",
             index=True,
             start=date.today(),
             end=date.today(),
-            option_type="CE",
+            option_type="CE",  # Call options
             strike_price=None,  # Fetch all strikes
             expiry_date=expiry_date
         )
-
-        # Split into Calls and Puts
-        calls = banknifty_data[banknifty_data['Option Type'] == 'CE']
-        puts = banknifty_data[banknifty_data['Option Type'] == 'PE']
+        
+        # Fetch Put Options (PE) data
+        puts = get_history(
+            symbol="BANKNIFTY",
+            index=True,
+            start=date.today(),
+            end=date.today(),
+            option_type="PE",  # Put options
+            strike_price=None,  # Fetch all strikes
+            expiry_date=expiry_date
+        )
 
         return calls, puts
     except Exception as e:
