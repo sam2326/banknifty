@@ -18,7 +18,7 @@ st.write("""
 
 # Supported Tickers
 SUPPORTED_TICKERS = {
-    "BankNifty": "^NSEBANK",
+    "BankNifty": "^NSEBANK",  # Check if this is the correct ticker
     "Nifty 50": "^NSEI",
     "Sensex": "^BSESN",
     "Reliance": "RELIANCE.NS",
@@ -40,10 +40,13 @@ def fetch_ticker_data(ticker):
     try:
         ticker_obj = yf.Ticker(ticker)
         data = ticker_obj.history(period="30d", interval="1d")  # Fetching last 30 days of data
+        
         if data.empty:
-            st.write(f"Error: No data returned for {ticker}.")
+            st.write(f"No data returned for ticker: {ticker}")
             return None
-        return data
+        else:
+            st.write(f"Fetched data for {ticker} successfully.")
+            return data
     except Exception as e:
         st.write(f"Error fetching data for {ticker}: {e}")
         return None
