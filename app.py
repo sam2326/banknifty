@@ -40,6 +40,9 @@ def fetch_ticker_data(ticker):
     try:
         ticker_obj = yf.Ticker(ticker)
         data = ticker_obj.history(period="30d", interval="1d")  # Fetching last 30 days of data
+        if data.empty:
+            st.write(f"Error: No data returned for {ticker}.")
+            return None
         return data
     except Exception as e:
         st.write(f"Error fetching data for {ticker}: {e}")
