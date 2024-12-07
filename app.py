@@ -103,15 +103,29 @@ def get_sentiment_analysis(news_headlines):
     sentiment_score = 0
     for headline in news_headlines:
         sentiment_score += TextBlob(headline).sentiment.polarity
-    return sentiment_score / len(news_headlines)
+    return sentiment_score / len(news_headlines) if news_headlines else 0
 
+# Function to fetch real-time news and calculate sentiment
 def fetch_news_and_sentiment():
-    url = 'https://newsapi.org/v2/everything?q=BankNifty&apiKey=YOUR_API_KEY'
-    response = requests.get(url)
-    articles = response.json()['articles']
-    headlines = [article['title'] for article in articles]
-    sentiment_score = get_sentiment_analysis(headlines)
-    return sentiment_score
+    api_key = "990f863a4f65430a99f9b0cac257f432"  # Your NewsAPI key
+    url = f'https://newsapi.org/v2/everything?q=BankNifty&apiKey={api_key}'
+
+    try:
+        response = requests.get(url)
+        response.raise_for_status()  # Ensure the request was successful
+        data = response.json()
+
+        if 'articles' in data:
+            articles = data['articles']
+            headlines = [article['title'] for article in articles]
+            sentiment_score = get_sentiment_analysis(headlines)
+            return sentiment_score
+        else:
+            st.write("Error: No articles found in the response.")
+            return 0
+    except requests.exceptions.RequestException as e:
+        st.write(f"Error fetching news: {e}")
+        return 0  # Return 0 in case of error
 
 # Volatility-based adjustments for stop loss and max LTP
 def adjust_for_volatility(predicted_ltp, india_vix):
