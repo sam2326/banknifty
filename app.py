@@ -137,13 +137,14 @@ def predict_ltp(current_ltp, ticker_price, strike_price, india_vix, sp500_price,
     predicted_ltp = current_ltp + sentiment_factor + strike_impact + sp500_impact + (current_ltp * random_factor)
     return round(predicted_ltp, 2)
 
-# Main logic for prediction
-if st.button("Get Prediction"):
-    ticker_price = fetch_ticker_data(ticker_symbol)
-    if ticker_price is None:
-        st.warning(f"Could not fetch data for {ticker_name}.")
-    else:
-        st.write(f"Current price for {ticker_name}: {ticker_price}")
+# Main logic for prediction with auto-refresh
+def auto_refresh():
+    while True:
+        ticker_price = fetch_ticker_data(ticker_symbol)
+        if ticker_price is None:
+            st.warning(f"Could not fetch data for {ticker_name}.")
+        else:
+            st.write(f"Current price for {ticker_name}: {ticker_price}")
 
         # Fetch India VIX
         india_vix_ticker = yf.Ticker("^INDIAVIX")
@@ -183,3 +184,11 @@ if st.button("Get Prediction"):
         else:
             st.write("Recommendation: Loss")
             st.write(f"Expected Loss: {round(ltp - predicted_ltp, 2)}")
+
+        # Automatically refresh every 5 seconds (or change to 3 seconds)
+        time.sleep(5)  # Set to 3 for 3-second refresh, or 5 for 5-second refresh
+        st.experimental_rerun()
+
+# Start auto-refresh when the button is clicked
+if st.button("Start Auto-Refresh"):
+    auto_refresh()
