@@ -1,9 +1,8 @@
 import yfinance as yf
 import streamlit as st
-from datetime import datetime
+from datetime import datetime, timedelta
 import random
 from nsepy import get_history
-from nsepy.derivatives import get_expiry_date
 import pandas as pd
 
 # Streamlit UI setup
@@ -52,6 +51,19 @@ def get_market_data():
         st.write(f"Error fetching market data: {e}")
         return None, None, None
 
+# Function to calculate the expiry date (last Thursday of the given month)
+def calculate_expiry_date(year, month):
+    # The expiry date is the last Thursday of the given month
+    # Get the first day of the next month
+    next_month = month + 1 if month < 12 else 1
+    next_month_year = year if month < 12 else year + 1
+    first_day_next_month = datetime(next_month_year, next_month, 1)
+
+    # Go back to the last Thursday of the previous month
+    days_to_subtract = (first_day_next_month.weekday() + 4) % 7
+    expiry_date = first_day_next_month - timedelta(days=days_to_subtract)
+    return expiry_date
+
 # Function to fetch option chain data using NSEpy
 def fetch_option_chain(expiry_date, banknifty_price):
     try:
@@ -59,14 +71,9 @@ def fetch_option_chain(expiry_date, banknifty_price):
         year = expiry_date.year
         month = expiry_date.month
 
-        # Use NSEpy to get the expiry date (correct usage without 'symbol' argument)
-        expiry = get_expiry_date(year=year, month=month)
+        # Manually calculate the expiry date (last Thursday of the month)
+        expiry = calculate_expiry_date(year, month)
         
-        # Handle case if expiry date is not found
-        if not expiry:
-            st.write(f"No expiry date found for BankNifty options in {month}/{year}")
-            return None
-
         # Define a range of strikes around the current BankNifty price
         strikes = [banknifty_price - 200, banknifty_price - 100, banknifty_price, banknifty_price + 100, banknifty_price + 200]
 
