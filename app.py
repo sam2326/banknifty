@@ -38,7 +38,7 @@ def prepare_training_data(data, sentiment_scores, spy_price, nifty_price, india_
     data['S&P 500'] = spy_price
     data['Nifty 50'] = nifty_price
     data['India VIX'] = india_vix
-    data['Sentiment'] = sentiment_scores
+    data['Sentiment'] = sentiment_scores  # Include sentiment score
     
     # Adding strike price and option type as features
     data['Strike Price'] = strike_price
@@ -48,7 +48,10 @@ def prepare_training_data(data, sentiment_scores, spy_price, nifty_price, india_
     data['LTP'] = ltp
     
     data.dropna(inplace=True)
-    # Returning features and the target variable (change from manual LTP)
+    
+    # Debugging: Check the number of features in training data
+    st.write("Training data features shape:", data.shape)
+    
     return data[['Prev_Close', 'Change', 'Volatility', 'S&P 500', 'Nifty 50', 'India VIX', 'Sentiment', 'Strike Price', 'Option Type', 'LTP']], data['Close'] - ltp  # Predicting change from LTP
 
 # Train Random Forest Model
@@ -121,6 +124,9 @@ def predict_next_day_price(model, ltp, strike_price, spy_price, nifty_price, ind
     change = strike_price - ltp  # Strike price impact
     # Make sure to pass the same number of features as the model was trained on
     features = np.array([[ltp, change, volatility, spy_price, nifty_price, india_vix, sentiment_score, strike_price, 1 if option_type == 'Call' else -1]])
+    
+    # Debugging: Check the shape of the features passed to the model
+    st.write("Prediction features shape:", features.shape)
     
     # Ensure that the model expects the same number of features as it was trained on
     predicted_change = model.predict(features)[0]
