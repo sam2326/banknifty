@@ -48,6 +48,7 @@ def prepare_training_data(data, sentiment_scores, spy_price, nifty_price, india_
     data['LTP'] = ltp
     
     data.dropna(inplace=True)
+    # Returning features and the target variable (change from manual LTP)
     return data[['Prev_Close', 'Change', 'Volatility', 'S&P 500', 'Nifty 50', 'India VIX', 'Sentiment', 'Strike Price', 'Option Type', 'LTP']], data['Close'] - ltp  # Predicting change from LTP
 
 # Train Random Forest Model
@@ -118,6 +119,7 @@ def get_sentiment_score(news_headlines):
 def predict_next_day_price(model, ltp, strike_price, spy_price, nifty_price, india_vix, sentiment_score, option_type):
     volatility = 0.02  # Assume a 2% daily volatility
     change = strike_price - ltp  # Strike price impact
+    # Make sure to pass the same number of features as the model was trained on
     features = np.array([[ltp, change, volatility, spy_price, nifty_price, india_vix, sentiment_score, strike_price, 1 if option_type == 'Call' else -1]])
     
     # Ensure that the model expects the same number of features as it was trained on
