@@ -1,6 +1,6 @@
 import yfinance as yf
 import streamlit as st
-from datetime import datetime, timedelta
+from datetime import datetime
 import numpy as np
 
 # Streamlit UI setup
@@ -15,14 +15,11 @@ st.write("""
 expiry_date = st.date_input("Select Expiry Date", min_value=datetime.today())
 strike_price = st.number_input("Enter Strike Price", min_value=0, value=53700)
 option_type = st.selectbox("Select Option Type", ["Call", "Put"])
-
-# Manually input the current LTP
-ltp = st.number_input("Enter Current LTP", min_value=0.0, value=752.05, step=0.05)
+ltp = st.number_input("Enter Current LTP", min_value=0.0, value=765.50, step=0.05)
 
 # Function to get BankNifty current data using Yahoo Finance
 def get_banknifty_data():
     try:
-        # Fetch BankNifty data using Yahoo Finance
         banknifty = yf.Ticker("^NSEBANK")  # ^NSEBANK is the BankNifty index symbol
         banknifty_data = banknifty.history(period="1d", interval="1m")  # 1-minute data for the last day
         current_price = banknifty_data["Close"].iloc[-1]  # Get the most recent closing price
@@ -34,11 +31,9 @@ def get_banknifty_data():
 # Function to get global market data (S&P500, Nifty 50) using Yahoo Finance
 def get_global_market_data():
     try:
-        # Get real-time market data for S&P500 and Nifty 50
         spy = yf.Ticker("^GSPC")  # S&P 500 Index
         nifty = yf.Ticker("^NSEI")  # Nifty 50 Index
 
-        # Get the most recent closing price for both S&P500 and Nifty 50
         spy_data = spy.history(period="1d", interval="1m")
         nifty_data = nifty.history(period="1d", interval="1m")
 
@@ -50,26 +45,22 @@ def get_global_market_data():
         st.write(f"Error fetching global market data: {e}")
         return None, None
 
-# Function to calculate LTP based on strike price and option type (approximation)
-def calculate_ltp(banknifty_price, strike_price, option_type):
-    if option_type == "Call":
-        # For Call Option: LTP is roughly the difference between strike price and index price
-        ltp = max(banknifty_price - strike_price, 0)  # Call options gain when the index is above strike
-    elif option_type == "Put":
-        # For Put Option: LTP is roughly the difference between strike price and index price
-        ltp = max(strike_price - banknifty_price, 0)  # Put options gain when the index is below strike
-    return round(ltp, 2)
+# Function to calculate predicted LTP based on dynamic global sentiment and strike impact
+def predict_ltp(current_ltp, spy_price, nifty_price, strike_price, banknifty_price):
+    # Calculate global sentiment factor dynamically
+    global_sentiment_factor = (spy_price * 0.0012) + (nifty_price * 0.004)
 
-# Function to calculate predicted LTP based on global market data
-def predict_ltp(current_ltp, spy_price, nifty_price):
-    # Using a simple correlation factor based on global market and Nifty 50 (for Indian market relevance)
-    global_sentiment_factor = (spy_price * 0.0015) + (nifty_price * 0.005)
-    predicted_ltp = current_ltp + global_sentiment_factor
+    # Adjust prediction based on strike price and BankNifty price
+    strike_impact_factor = max(banknifty_price - strike_price, 0) * 0.001  # For Calls
+    if strike_price > banknifty_price:
+        strike_impact_factor = max(strike_price - banknifty_price, 0) * -0.001  # For Puts
+
+    # Final predicted LTP
+    predicted_ltp = current_ltp + global_sentiment_factor + strike_impact_factor
     return round(predicted_ltp, 2)
 
 # Simulate prediction of stop loss and maximum LTP based on volatility
 def predict_stop_loss_and_max_ltp(predicted_ltp):
-    # Based on market volatility, setting stop loss and max LTP (±1.5% for stop loss, ±2% for max LTP)
     stop_loss = predicted_ltp * 0.985  # 1.5% below the predicted LTP
     max_ltp = predicted_ltp * 1.02  # 2% above the predicted LTP
     return round(stop_loss, 2), round(max_ltp, 2)
@@ -89,13 +80,13 @@ def predict_profit_or_loss(predicted_ltp, ltp, option_type):
 
 # Main logic
 if st.button("Get Prediction"):
-    # Fetch the current LTP for the selected option (using manually input LTP)
-    real_time_data = get_banknifty_data()
+    # Fetch the current BankNifty price
+    banknifty_price = get_banknifty_data()
     
-    if real_time_data is None:
+    if banknifty_price is None:
         st.warning("Could not fetch real-time BankNifty data. Please try again later.")
     else:
-        st.write(f"Current BankNifty index price: {real_time_data}")
+        st.write(f"Current BankNifty index price: {banknifty_price}")
 
         # Get global market data (S&P500 and Nifty 50)
         spy_price, nifty_price = get_global_market_data()
@@ -108,8 +99,8 @@ if st.button("Get Prediction"):
             # Use the manually inputted LTP for prediction
             st.write(f"Manually input LTP: {ltp}")
 
-            # Predict the LTP for the next day based on market data
-            predicted_ltp = predict_ltp(ltp, spy_price, nifty_price)
+            # Predict the LTP for the next day
+            predicted_ltp = predict_ltp(ltp, spy_price, nifty_price, strike_price, banknifty_price)
             st.write(f"Predicted LTP for next day: {predicted_ltp}")
 
             # Predict Stop Loss and Maximum LTP
