@@ -89,10 +89,10 @@ def recommend_strikes(calls, puts, banknifty_price):
 
     # Calculate the proximity of each strike to the current BankNifty price
     for call, put in zip(calls, puts):
-        # Get strike price from the symbol (e.g., BANKNIFTY53700CE)
-        call_strike = int(call.info['symbol'][8:13])  # Extract strike from ticker symbol
+        # Extract strike price from the ticker symbol (e.g., BANKNIFTY53700CE -> 53700)
+        call_strike = int(call.info['symbol'][8:13])  # Extract strike from ticker symbol (position may vary based on the option format)
         put_strike = int(put.info['symbol'][8:13])  # Extract strike from ticker symbol
-        
+
         # Calculate proximity (difference between the current BankNifty price and the strike price)
         proximity_call = abs(call_strike - banknifty_price)
         proximity_put = abs(put_strike - banknifty_price)
