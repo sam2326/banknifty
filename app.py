@@ -29,7 +29,7 @@ def fetch_historical_data(ticker):
     return ticker_obj.history(period="1y")  # 1 year of data for training
 
 # Prepare training data
-def prepare_training_data(data, sentiment_scores, spy_price, nifty_price, india_vix):
+def prepare_training_data(data, sentiment_scores, spy_price, nifty_price, india_vix, strike_price, option_type):
     data['Prev_Close'] = data['Close'].shift(1)
     data['Change'] = data['Close'] - data['Prev_Close']
     data['Volatility'] = (data['High'] - data['Low']) / data['Close']
@@ -40,8 +40,12 @@ def prepare_training_data(data, sentiment_scores, spy_price, nifty_price, india_
     data['India VIX'] = india_vix
     data['Sentiment'] = sentiment_scores
     
+    # Adding strike price and option type as features
+    data['Strike Price'] = strike_price
+    data['Option Type'] = 1 if option_type == 'Call' else -1  # Call = 1, Put = -1
+    
     data.dropna(inplace=True)
-    return data[['Prev_Close', 'Change', 'Volatility', 'S&P 500', 'Nifty 50', 'India VIX', 'Sentiment']], data['Close']
+    return data[['Prev_Close', 'Change', 'Volatility', 'S&P 500', 'Nifty 50', 'India VIX', 'Sentiment', 'Strike Price', 'Option Type']], data['Close']
 
 # Train Random Forest Model
 def train_model(X, y):
@@ -108,10 +112,10 @@ def get_sentiment_score(news_headlines):
     return sentiment_score / len(news_headlines) if news_headlines else 0
 
 # Main prediction function
-def predict_next_day_price(model, ltp, strike_price, spy_price, nifty_price, india_vix, sentiment_score):
+def predict_next_day_price(model, ltp, strike_price, spy_price, nifty_price, india_vix, sentiment_score, option_type):
     volatility = 0.02  # Assume a 2% daily volatility
     change = strike_price - ltp  # Strike price impact
-    features = np.array([[ltp, change, volatility, spy_price, nifty_price, india_vix, sentiment_score]])
+    features = np.array([[ltp, change, volatility, spy_price, nifty_price, india_vix, sentiment_score, strike_price, 1 if option_type == 'Call' else -1]])
     return model.predict(features)[0]
 
 # Main logic
@@ -136,12 +140,12 @@ if st.button("Get Prediction"):
             sentiment_score = get_sentiment_analysis()
 
             # Prepare training data and train the model
-            X, y = prepare_training_data(data, sentiment_score, spy_price, nifty_price, india_vix)
+            X, y = prepare_training_data(data, sentiment_score, spy_price, nifty_price, india_vix, strike_price, option_type)
             model = train_model(X, y)
             save_model(model)  # Save model for future use
 
             # Predict LTP for the next day
-            predicted_ltp = predict_next_day_price(model, ltp, strike_price, spy_price, nifty_price, india_vix, sentiment_score)
+            predicted_ltp = predict_next_day_price(model, ltp, strike_price, spy_price, nifty_price, india_vix, sentiment_score, option_type)
             st.write(f"Predicted LTP for next day: {predicted_ltp:.2f}")
 
             # Stop Loss and Maximum LTP
