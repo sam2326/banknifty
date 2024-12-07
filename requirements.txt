@@ -1,10 +1,10 @@
 yfinance
 streamlit
-requests
-textblob
 torch
 transformers
+requests
+textblob
 pandas
 numpy
-scikit-learn
-pandas_ta
+matplotlib
+seaborn
