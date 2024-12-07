@@ -1,90 +1,103 @@
 import yfinance as yf
 import streamlit as st
-import random
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
+import pickle
 from sklearn.ensemble import RandomForestRegressor
-from textblob import TextBlob
-import requests
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_squared_error
+from datetime import datetime, timedelta
 
 # Streamlit UI setup
-st.title("Multi-Index Options Prediction App")
+st.title("Enhanced ML Predictions for BankNifty Options")
 st.write("""
-    This app predicts the next day's movement for options based on real-time market data.
-    Now, you can select multiple indices or stocks like **BankNifty**, **Nifty 50**, and even individual stocks.
+    This app uses a machine learning model (Random Forest) to predict the next day's movement for options.
+    Enter the details for the option you're interested in, and get ML-powered predictions for the next day.
 """)
 
-# Supported Tickers
-SUPPORTED_TICKERS = {
-    "BankNifty": "^NSEBANK",
-    "Nifty 50": "^NSEI",
-    "Sensex": "^BSESN",
-    "Reliance": "RELIANCE.NS",
-    "HDFC Bank": "HDFCBANK.NS"
-}
-
-# Dropdown for selecting ticker
-ticker_name = st.selectbox("Select Index/Stock", list(SUPPORTED_TICKERS.keys()))
-ticker_symbol = SUPPORTED_TICKERS[ticker_name]
-
 # Input fields
-expiry_date = st.date_input("Select Expiry Date", min_value=datetime.today())
+ticker_name = st.selectbox("Select Ticker", ["BankNifty", "Nifty 50", "Reliance", "HDFC Bank"])
 strike_price = st.number_input("Enter Strike Price", min_value=0, value=53700)
 option_type = st.selectbox("Select Option Type", ["Call", "Put"])
-ltp = st.number_input("Enter Current LTP", min_value=0.0, value=765.50, step=0.05)
+ltp = st.number_input("Enter Current LTP", min_value=0.0, value=790.0, step=0.05)
 
-# Function to fetch data for selected ticker
-def fetch_ticker_data(ticker):
-    try:
-        ticker_obj = yf.Ticker(ticker)
-        data = ticker_obj.history(period="1d", interval="1m")
-        current_price = data["Close"].iloc[-1]
-        return current_price
-    except Exception as e:
-        st.write(f"Error fetching data for {ticker}: {e}")
-        return None
+# Fetch historical data for ML training
+def fetch_historical_data(ticker):
+    ticker_obj = yf.Ticker(ticker)
+    return ticker_obj.history(period="1y")  # 1 year of data for training
 
-# Function to predict LTP for the selected ticker
-def predict_ltp(current_ltp, ticker_price, strike_price, india_vix):
-    sentiment_factor = india_vix * 0.1
-    strike_impact = (strike_price - ticker_price) * (0.01 if strike_price < ticker_price else -0.01)
-    random_factor = random.uniform(-0.01, 0.02)
-    predicted_ltp = current_ltp + sentiment_factor + strike_impact + (current_ltp * random_factor)
-    return round(predicted_ltp, 2)
+# Prepare training data
+def prepare_training_data(data):
+    data['Prev_Close'] = data['Close'].shift(1)
+    data['Change'] = data['Close'] - data['Prev_Close']
+    data['Volatility'] = (data['High'] - data['Low']) / data['Close']
+    data.dropna(inplace=True)
+    return data[['Prev_Close', 'Change', 'Volatility']], data['Close']
 
-# Main logic for prediction
+# Train Random Forest Model
+def train_model(X, y):
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    model = RandomForestRegressor(n_estimators=100, random_state=42)
+    model.fit(X_train, y_train)
+    y_pred = model.predict(X_test)
+    mse = mean_squared_error(y_test, y_pred)
+    st.write(f"Model Trained. Test MSE: {mse:.2f}")
+    return model
+
+# Save model to file
+def save_model(model, filename="rf_model.pkl"):
+    with open(filename, "wb") as f:
+        pickle.dump(model, f)
+
+# Load pre-trained model
+def load_model(filename="rf_model.pkl"):
+    with open(filename, "rb") as f:
+        return pickle.load(f)
+
+# Main prediction function
+def predict_next_day_price(model, ltp, strike_price):
+    # Simulate features for prediction
+    volatility = 0.02  # Assume a 2% daily volatility
+    change = strike_price - ltp  # Strike price impact
+    features = np.array([[ltp, change, volatility]])
+    return model.predict(features)[0]
+
+# Main logic
 if st.button("Get Prediction"):
-    ticker_price = fetch_ticker_data(ticker_symbol)
-    if ticker_price is None:
-        st.warning(f"Could not fetch data for {ticker_name}.")
+    # Fetch data
+    ticker_map = {
+        "BankNifty": "^NSEBANK",
+        "Nifty 50": "^NSEI",
+        "Reliance": "RELIANCE.NS",
+        "HDFC Bank": "HDFCBANK.NS"
+    }
+    ticker = ticker_map[ticker_name]
+    data = fetch_historical_data(ticker)
+    
+    if data is None or data.empty:
+        st.warning("Could not fetch historical data. Please try again.")
     else:
-        st.write(f"Current price for {ticker_name}: {ticker_price}")
+        st.write(f"Fetched data for {ticker_name}. Training ML model...")
 
-        # Fetch India VIX
-        india_vix_ticker = yf.Ticker("^INDIAVIX")
-        try:
-            india_vix = india_vix_ticker.history(period="1d", interval="1m")["Close"].iloc[-1]
-        except:
-            india_vix = 15.0  # Default VIX value if fetching fails
-            st.write("Warning: Using default India VIX value.")
+        # Prepare training data and train model
+        X, y = prepare_training_data(data)
+        model = train_model(X, y)
+        save_model(model)  # Save model for future use
 
-        st.write(f"India VIX: {india_vix}")
+        # Predict LTP for the next day
+        predicted_ltp = predict_next_day_price(model, ltp, strike_price)
+        st.write(f"Predicted LTP for next day: {predicted_ltp:.2f}")
 
-        # Predict LTP
-        predicted_ltp = predict_ltp(ltp, ticker_price, strike_price, india_vix)
-        st.write(f"Predicted LTP for next day: {predicted_ltp}")
-
-        # Stop Loss and Max LTP
+        # Stop Loss and Maximum LTP
         stop_loss = predicted_ltp * 0.98
         max_ltp = predicted_ltp * 1.02
-        st.write(f"Stop Loss: {round(stop_loss, 2)}")
-        st.write(f"Maximum LTP: {round(max_ltp, 2)}")
+        st.write(f"Stop Loss: {stop_loss:.2f}")
+        st.write(f"Maximum LTP: {max_ltp:.2f}")
 
         # Recommendation
         if predicted_ltp > ltp:
             st.write("Recommendation: Profit")
-            st.write(f"Expected Profit: {round(predicted_ltp - ltp, 2)}")
+            st.write(f"Expected Profit: {predicted_ltp - ltp:.2f}")
         else:
             st.write("Recommendation: Loss")
-            st.write(f"Expected Loss: {round(ltp - predicted_ltp, 2)}")
+            st.write(f"Expected Loss: {ltp - predicted_ltp:.2f}")
