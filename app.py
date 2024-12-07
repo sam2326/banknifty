@@ -83,14 +83,15 @@ def predict_ltp(current_ltp, spy_price, nifty_price, strike_price, banknifty_pri
     predicted_ltp = current_ltp + global_sentiment_factor + strike_impact_factor + (current_ltp * random_factor)
     return round(predicted_ltp, 2)
 
-# Function to recommend strikes based on proximity to BankNifty and liquidity (using Close Price)
+# Function to recommend strikes based on proximity to BankNifty
 def recommend_strikes(calls, puts, banknifty_price):
     recommendations = []
 
     # Calculate the proximity of each strike to the current BankNifty price
     for call, put in zip(calls, puts):
-        call_strike = call.history(period="1d")["Strike Price"].iloc[0]
-        put_strike = put.history(period="1d")["Strike Price"].iloc[0]
+        # Get strike price from the symbol (e.g., BANKNIFTY53700CE)
+        call_strike = int(call.info['symbol'][8:13])  # Extract strike from ticker symbol
+        put_strike = int(put.info['symbol'][8:13])  # Extract strike from ticker symbol
         
         # Calculate proximity (difference between the current BankNifty price and the strike price)
         proximity_call = abs(call_strike - banknifty_price)
