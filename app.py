@@ -1,9 +1,22 @@
 import yfinance as yf
 import streamlit as st
-from datetime import datetime, timedelta
 import random
-from nsepy import get_history
 import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from datetime import datetime, timedelta
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.metrics import mean_squared_error
+from sklearn.preprocessing import MinMaxScaler
+from textblob import TextBlob
+import requests
+from py_vollib.black_scholes import black_scholes
+from py_vollib.black_scholes.implied_volatility import implied_volatility
+from py_vollib.black_scholes.greeks import analytical
+import talib
+import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM, Dense
 
 # Streamlit UI setup
 st.title("BankNifty Options Prediction for Intraday Trading with Dynamic Strike Recommendations")
@@ -54,12 +67,10 @@ def get_market_data():
 # Function to calculate the expiry date (last Thursday of the given month)
 def calculate_expiry_date(year, month):
     # The expiry date is the last Thursday of the given month
-    # Get the first day of the next month
     next_month = month + 1 if month < 12 else 1
     next_month_year = year if month < 12 else year + 1
     first_day_next_month = datetime(next_month_year, next_month, 1)
 
-    # Go back to the last Thursday of the previous month
     days_to_subtract = (first_day_next_month.weekday() + 4) % 7
     expiry_date = first_day_next_month - timedelta(days=days_to_subtract)
     return expiry_date
@@ -67,90 +78,98 @@ def calculate_expiry_date(year, month):
 # Function to fetch option chain data using NSEpy
 def fetch_option_chain(expiry_date, banknifty_price):
     try:
-        # Get the expiry date for BankNifty options
         year = expiry_date.year
         month = expiry_date.month
-
-        # Manually calculate the expiry date (last Thursday of the month)
         expiry = calculate_expiry_date(year, month)
-        
-        # Define a range of strikes around the current BankNifty price
+
         strikes = [banknifty_price - 200, banknifty_price - 100, banknifty_price, banknifty_price + 100, banknifty_price + 200]
 
-        # Fetch option chain for Calls and Puts from NSEpy
         option_chain = []
         for strike in strikes:
-            call_data = get_history(symbol="BANKNIFTY", index=True, start=expiry_date, end=expiry_date, option_type="CE", strike_price=strike, expiry_date=expiry)
-            put_data = get_history(symbol="BANKNIFTY", index=True, start=expiry_date, end=expiry_date, option_type="PE", strike_price=strike, expiry_date=expiry)
-
-            option_chain.append((call_data, put_data))
-
+            # Placeholder for fetching actual option chain data
+            option_chain.append((strike, strike + random.uniform(0, 50), strike - random.uniform(0, 50)))
         return option_chain
     except Exception as e:
         st.write(f"Error fetching option chain: {e}")
         return None
 
-# Function to calculate predicted LTP
+# Function to predict the LTP based on global sentiment and volatility
 def predict_ltp(current_ltp, spy_price, nifty_price, strike_price, banknifty_price, india_vix):
     global_sentiment_factor = (spy_price * 0.0015) + (nifty_price * 0.005) + (india_vix * 0.1)
 
-    if strike_price > banknifty_price:
-        strike_impact_factor = (strike_price - banknifty_price) * -0.01
-    else:
-        strike_impact_factor = (banknifty_price - strike_price) * 0.01
+    strike_impact_factor = (strike_price - banknifty_price) * (0.01 if strike_price < banknifty_price else -0.01)
 
     random_factor = random.uniform(-0.01, 0.02)
 
     predicted_ltp = current_ltp + global_sentiment_factor + strike_impact_factor + (current_ltp * random_factor)
     return round(predicted_ltp, 2)
 
-# Function to recommend strikes based on proximity to BankNifty
-def recommend_strikes(option_chain, banknifty_price):
-    recommendations = []
+# Sentiment Analysis for real-time news (Placeholder news)
+def get_sentiment_analysis(news_headlines):
+    sentiment_score = 0
+    for headline in news_headlines:
+        sentiment_score += TextBlob(headline).sentiment.polarity
+    return sentiment_score / len(news_headlines)
 
-    # Calculate the proximity of each strike to the current BankNifty price
-    for call_data, put_data in option_chain:
-        if not call_data.empty and not put_data.empty:
-            call_strike = call_data['Strike Price'].iloc[0]
-            put_strike = put_data['Strike Price'].iloc[0]
+def fetch_news_and_sentiment():
+    url = 'https://newsapi.org/v2/everything?q=BankNifty&apiKey=YOUR_API_KEY'
+    response = requests.get(url)
+    articles = response.json()['articles']
+    headlines = [article['title'] for article in articles]
+    sentiment_score = get_sentiment_analysis(headlines)
+    return sentiment_score
 
-            # Calculate proximity to BankNifty
-            proximity_call = abs(call_strike - banknifty_price)
-            proximity_put = abs(put_strike - banknifty_price)
-
-            recommendations.append({
-                'strike': call_strike,
-                'proximity_call': proximity_call,
-                'proximity_put': proximity_put
-            })
-
-    # Sort the recommendations by proximity to BankNifty price
-    recommendations.sort(key=lambda x: min(x['proximity_call'], x['proximity_put']))
-
-    return recommendations
-
-# Function to adjust Stop Loss and Maximum LTP based on volatility (India VIX)
+# Volatility-based adjustments for stop loss and max LTP
 def adjust_for_volatility(predicted_ltp, india_vix):
-    # The volatility adjustment factor based on India VIX
-    volatility_factor = india_vix / 100  # Normalize VIX to a usable factor (VIX is often in percentage)
+    volatility_factor = india_vix / 100  # Normalize VIX to a usable factor
 
-    # Adjust Stop Loss and Maximum LTP based on volatility
-    stop_loss = predicted_ltp * (1 - (0.01 * volatility_factor))  # Stop Loss becomes wider with higher volatility
-    max_ltp = predicted_ltp * (1 + (0.02 * volatility_factor))  # Maximum LTP becomes higher with higher volatility
+    stop_loss = predicted_ltp * (1 - (0.01 * volatility_factor))
+    max_ltp = predicted_ltp * (1 + (0.02 * volatility_factor))
 
     return stop_loss, max_ltp
 
-# Main logic
+# Adding technical indicators (RSI, MACD, SMA)
+def add_technical_indicators(data):
+    data['RSI'] = talib.RSI(data['BankNifty_Close'], timeperiod=14)
+    data['MACD'], data['MACD_signal'], _ = talib.MACD(data['BankNifty_Close'], fastperiod=12, slowperiod=26, signalperiod=9)
+    data['SMA_50'] = talib.SMA(data['BankNifty_Close'], timeperiod=50)
+    data['SMA_200'] = talib.SMA(data['BankNifty_Close'], timeperiod=200)
+
+    return data
+
+# Backtesting with historical data (using machine learning models)
+def backtest_model():
+    options_data = get_historical_data()
+
+    features = options_data[['BankNifty_Close']]
+    target = options_data['LTP']
+
+    X_train, X_test, y_train, y_test = train_test_split(features, target, test_size=0.2, random_state=42)
+
+    model = RandomForestRegressor(n_estimators=100, random_state=42)
+    model.fit(X_train, y_train)
+
+    y_pred = model.predict(X_test)
+
+    mse = mean_squared_error(y_test, y_pred)
+    print(f"Mean Squared Error: {mse}")
+
+    plt.plot(y_test.index, y_test, label="Actual LTP", color='blue')
+    plt.plot(y_test.index, y_pred, label="Predicted LTP", color='red')
+    plt.legend()
+    plt.show()
+
+# Main logic to get predictions
 if st.button("Get Prediction"):
     banknifty_price = get_banknifty_data()
     if banknifty_price is None:
-        st.warning("Could not fetch real-time BankNifty data. Please try again later.")
+        st.warning("Could not fetch real-time BankNifty data.")
     else:
         st.write(f"Current BankNifty index price: {banknifty_price}")
 
         spy_price, nifty_price, india_vix = get_market_data()
         if spy_price is None or nifty_price is None or india_vix is None:
-            st.warning("Could not fetch global market data. Please try again later.")
+            st.warning("Could not fetch global market data.")
         else:
             st.write(f"Real-time S&P 500 price: {spy_price}")
             st.write(f"Real-time Nifty 50 price: {nifty_price}")
@@ -158,26 +177,23 @@ if st.button("Get Prediction"):
 
             st.write(f"Manually input LTP: {ltp}")
 
-            # Fetch option chain for dynamic strikes
             option_chain = fetch_option_chain(expiry_date, banknifty_price)
             if option_chain is None:
-                st.warning("Could not fetch option chain. Please try again later.")
+                st.warning("Could not fetch option chain.")
             else:
-                recommendations = recommend_strikes(option_chain, banknifty_price)
-                st.write("**Recommended Strikes Based on Proximity to BankNifty**")
-                for rec in recommendations[:5]:  # Show top 5 recommended strikes
-                    st.write(f"Strike: {rec['strike']}, Proximity to BankNifty: {min(rec['proximity_call'], rec['proximity_put'])}")
+                predictions = predict_ltp(ltp, spy_price, nifty_price, strike_price, banknifty_price, india_vix)
+                st.write(f"Predicted LTP for next day: {predictions}")
 
-                predicted_ltp = predict_ltp(ltp, spy_price, nifty_price, strike_price, banknifty_price, india_vix)
-                st.write(f"Predicted LTP for next day: {predicted_ltp}")
-
-                stop_loss, max_ltp = adjust_for_volatility(predicted_ltp, india_vix)
+                stop_loss, max_ltp = adjust_for_volatility(predictions, india_vix)
                 st.write(f"Stop Loss: {round(stop_loss, 2)}")
                 st.write(f"Maximum LTP: {round(max_ltp, 2)}")
 
-                if predicted_ltp > ltp:
+                sentiment_score = fetch_news_and_sentiment()
+                st.write(f"Sentiment Score: {sentiment_score}")
+
+                if predictions > ltp:
                     st.write("Recommendation: Profit")
-                    st.write(f"Expected Profit: {round(predicted_ltp - ltp, 2)}")
+                    st.write(f"Expected Profit: {round(predictions - ltp, 2)}")
                 else:
                     st.write("Recommendation: Loss")
-                    st.write(f"Expected Loss: {round(ltp - predicted_ltp, 2)}")
+                    st.write(f"Expected Loss: {round(ltp - predictions, 2)}")
