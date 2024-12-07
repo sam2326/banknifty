@@ -72,7 +72,8 @@ def fetch_sp500_data():
 # Function to get news sentiment for a given index/stock
 def get_news_sentiment(ticker_name):
     api_key = "990f863a4f65430a99f9b0cac257f432"  # Your NewsAPI key
-    url = f'https://newsapi.org/v2/everything?q={ticker_name} OR RBI OR "Reserve Bank of India"&apiKey={api_key}'
+    # Modify the query to include broader market-related terms
+    url = f'https://newsapi.org/v2/everything?q={ticker_name} OR RBI OR "interest rates" OR "monetary policy" OR "banking sector" OR "GDP growth" OR "inflation" OR "earnings report" OR "trade wars" OR "interest rate hikes" OR "acquisitions" OR "merger" OR "quarterly results"&apiKey={api_key}'
 
     try:
         response = requests.get(url)
@@ -82,12 +83,8 @@ def get_news_sentiment(ticker_name):
         if 'articles' in data and data['articles']:
             articles = data['articles']
             headlines = [article['title'] for article in articles if article['title']]
-            if headlines:
-                sentiment_score = get_sentiment_score(headlines)
-                return sentiment_score
-            else:
-                st.write("Warning: No valid headlines found.")
-                return 0
+            sentiment_score = get_sentiment_score(headlines)
+            return sentiment_score
         else:
             st.write("Warning: No articles found.")
             return 0
