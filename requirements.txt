@@ -5,7 +5,5 @@ pandas
 numpy
 matplotlib
 requests
-tensorflow
 textblob
 py_vollib
-TA-Lib
