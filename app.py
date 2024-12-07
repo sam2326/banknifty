@@ -1,18 +1,15 @@
 import yfinance as yf
 import streamlit as st
 import random
-import torch
-from transformers import BertTokenizer, BertForSequenceClassification
-from torch.nn.functional import softmax
-import requests
 from textblob import TextBlob
+import requests
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error
-import pandas_ta as ta  # Replaced TA-Lib with pandas_ta
+import pandas_ta as ta  # Used pandas_ta for technical indicators
 
 # Streamlit UI setup
 st.title("Enhanced Multi-Index Options Prediction App with Machine Learning")
@@ -38,19 +35,6 @@ expiry_date = st.date_input("Select Expiry Date", min_value=datetime.today())
 strike_price = st.number_input("Enter Strike Price", min_value=0, value=53700)
 option_type = st.selectbox("Select Option Type", ["Call", "Put"])
 ltp = st.number_input("Enter Current LTP", min_value=0.0, value=765.50, step=0.05)
-
-# Load FinBERT for Sentiment Analysis
-tokenizer = BertTokenizer.from_pretrained('yiyanghkust/finbert-tone', do_lower_case=False)
-model = BertForSequenceClassification.from_pretrained('yiyanghkust/finbert-tone')
-
-# Function to get financial sentiment using FinBERT
-def get_financial_sentiment(text):
-    inputs = tokenizer(text, return_tensors="pt", truncation=True, padding=True)
-    outputs = model(**inputs)
-    probs = softmax(outputs.logits, dim=-1)
-    sentiment = torch.argmax(probs).item()
-    sentiment_map = {0: "Negative", 1: "Neutral", 2: "Positive"}
-    return sentiment_map[sentiment]
 
 # Function to fetch data for selected ticker
 def fetch_ticker_data(ticker):
