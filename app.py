@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error
-import talib as ta
+import pandas_ta as ta  # Replaced TA-Lib with pandas_ta
 
 # Streamlit UI setup
 st.title("Enhanced Multi-Index Options Prediction App with Machine Learning")
@@ -108,10 +108,10 @@ def get_sentiment_score(news_headlines):
 
 # Function to add technical indicators as features
 def add_technical_indicators(data):
-    data['SMA_50'] = ta.SMA(data['Close'], timeperiod=50)
-    data['SMA_200'] = ta.SMA(data['Close'], timeperiod=200)
-    data['RSI'] = ta.RSI(data['Close'], timeperiod=14)
-    data['MACD'], _, _ = ta.MACD(data['Close'], fastperiod=12, slowperiod=26, signalperiod=9)
+    data['SMA_50'] = ta.sma(data['Close'], 50)
+    data['SMA_200'] = ta.sma(data['Close'], 200)
+    data['RSI'] = ta.rsi(data['Close'], 14)
+    data['MACD'] = ta.macd(data['Close'])['MACD']
     return data.dropna()  # Remove any missing values
 
 # Function to train the Random Forest model
