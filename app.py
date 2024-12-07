@@ -29,7 +29,7 @@ def fetch_historical_data(ticker):
     return ticker_obj.history(period="1y")  # 1 year of data for training
 
 # Prepare training data
-def prepare_training_data(data, sentiment_scores, spy_price, nifty_price, india_vix, strike_price, option_type):
+def prepare_training_data(data, sentiment_scores, spy_price, nifty_price, india_vix, strike_price, option_type, ltp):
     data['Prev_Close'] = data['Close'].shift(1)
     data['Change'] = data['Close'] - data['Prev_Close']
     data['Volatility'] = (data['High'] - data['Low']) / data['Close']
@@ -44,8 +44,11 @@ def prepare_training_data(data, sentiment_scores, spy_price, nifty_price, india_
     data['Strike Price'] = strike_price
     data['Option Type'] = 1 if option_type == 'Call' else -1  # Call = 1, Put = -1
     
+    # Adding manual LTP as a feature to ensure alignment with user input
+    data['LTP'] = ltp
+    
     data.dropna(inplace=True)
-    return data[['Prev_Close', 'Change', 'Volatility', 'S&P 500', 'Nifty 50', 'India VIX', 'Sentiment', 'Strike Price', 'Option Type']], data['Close']
+    return data[['Prev_Close', 'Change', 'Volatility', 'S&P 500', 'Nifty 50', 'India VIX', 'Sentiment', 'Strike Price', 'Option Type', 'LTP']], data['Close'] - ltp  # Predicting change from LTP
 
 # Train Random Forest Model
 def train_model(X, y):
@@ -116,7 +119,8 @@ def predict_next_day_price(model, ltp, strike_price, spy_price, nifty_price, ind
     volatility = 0.02  # Assume a 2% daily volatility
     change = strike_price - ltp  # Strike price impact
     features = np.array([[ltp, change, volatility, spy_price, nifty_price, india_vix, sentiment_score, strike_price, 1 if option_type == 'Call' else -1]])
-    return model.predict(features)[0]
+    predicted_change = model.predict(features)[0]
+    return ltp + predicted_change  # Adjusting predicted LTP based on change from manual LTP
 
 # Main logic
 if st.button("Get Prediction"):
@@ -140,7 +144,7 @@ if st.button("Get Prediction"):
             sentiment_score = get_sentiment_analysis()
 
             # Prepare training data and train the model
-            X, y = prepare_training_data(data, sentiment_score, spy_price, nifty_price, india_vix, strike_price, option_type)
+            X, y = prepare_training_data(data, sentiment_score, spy_price, nifty_price, india_vix, strike_price, option_type, ltp)
             model = train_model(X, y)
             save_model(model)  # Save model for future use
 
