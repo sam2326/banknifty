@@ -2,7 +2,7 @@ yfinance
 streamlit
 requests
 textblob
-torch+cpu
+torch
 transformers
 pandas
 numpy
