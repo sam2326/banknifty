@@ -6,13 +6,18 @@ from transformers import BertTokenizer, BertForSequenceClassification
 from torch.nn.functional import softmax
 import requests
 from textblob import TextBlob
+import pandas as pd
+import numpy as np
 from datetime import datetime, timedelta
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_squared_error
+import talib as ta
 
 # Streamlit UI setup
-st.title("Enhanced Multi-Index Options Prediction App")
+st.title("Enhanced Multi-Index Options Prediction App with Machine Learning")
 st.write("""
-    This app predicts the next day's movement for options based on real-time market data, including sentiment analysis.
-    You can select multiple indices or stocks like **BankNifty**, **Nifty 50**, **Reliance**, and more.
+    This app predicts the next day's movement for options based on real-time market data, including sentiment analysis and machine learning predictions.
 """)
 
 # Supported Tickers
@@ -44,7 +49,6 @@ def get_financial_sentiment(text):
     outputs = model(**inputs)
     probs = softmax(outputs.logits, dim=-1)
     sentiment = torch.argmax(probs).item()
-
     sentiment_map = {0: "Negative", 1: "Neutral", 2: "Positive"}
     return sentiment_map[sentiment]
 
@@ -52,9 +56,8 @@ def get_financial_sentiment(text):
 def fetch_ticker_data(ticker):
     try:
         ticker_obj = yf.Ticker(ticker)
-        data = ticker_obj.history(period="1d", interval="1m")
-        current_price = data["Close"].iloc[-1]
-        return current_price
+        data = ticker_obj.history(period="30d", interval="1d")  # Fetching last 30 days of data
+        return data
     except Exception as e:
         st.write(f"Error fetching data for {ticker}: {e}")
         return None
@@ -63,16 +66,15 @@ def fetch_ticker_data(ticker):
 def fetch_sp500_data():
     try:
         sp500 = yf.Ticker("^GSPC")
-        data = sp500.history(period="1d", interval="1m")
-        return data["Close"].iloc[-1]
+        data = sp500.history(period="30d", interval="1d")
+        return data["Close"]
     except Exception as e:
         st.write(f"Error fetching S&P 500 data: {e}")
         return None
 
-# Function to get news sentiment for a given index/stock
+# Function to fetch news sentiment for a given index/stock
 def get_news_sentiment(ticker_name):
     api_key = "990f863a4f65430a99f9b0cac257f432"  # Your NewsAPI key
-    # Modify the query to include broader market-related terms
     url = f'https://newsapi.org/v2/everything?q={ticker_name} OR RBI OR "interest rates" OR "monetary policy" OR "banking sector" OR "GDP growth" OR "inflation" OR "earnings report" OR "trade wars" OR "interest rate hikes" OR "acquisitions" OR "merger" OR "quarterly results"&apiKey={api_key}'
 
     try:
@@ -95,39 +97,61 @@ def get_news_sentiment(ticker_name):
 # Function to calculate sentiment score from headlines
 def get_sentiment_score(news_headlines):
     sentiment_score = 0
-    # Ensure that headlines are valid and not empty
     for headline in news_headlines:
         try:
-            # Check if headline is a valid string and perform sentiment analysis
             if isinstance(headline, str) and headline.strip():
                 sentiment_score += TextBlob(headline).sentiment.polarity
         except Exception as e:
             st.write(f"Error analyzing sentiment for headline: {headline}. Error: {e}")
     
-    # Avoid division by zero if there are no valid headlines
     return sentiment_score / len(news_headlines) if news_headlines else 0
 
-# Function to predict LTP for the selected ticker
-def predict_ltp(current_ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score):
-    sentiment_factor = india_vix * 0.1 + sentiment_score * 0.05
-    strike_impact = (strike_price - ticker_price) * (0.01 if strike_price < ticker_price else -0.01)
-    sp500_impact = sp500_price * 0.005
-    random_factor = random.uniform(-0.01, 0.02)
-    predicted_ltp = current_ltp + sentiment_factor + strike_impact + sp500_impact + (current_ltp * random_factor)
-    return round(predicted_ltp, 2)
+# Function to add technical indicators as features
+def add_technical_indicators(data):
+    data['SMA_50'] = ta.SMA(data['Close'], timeperiod=50)
+    data['SMA_200'] = ta.SMA(data['Close'], timeperiod=200)
+    data['RSI'] = ta.RSI(data['Close'], timeperiod=14)
+    data['MACD'], _, _ = ta.MACD(data['Close'], fastperiod=12, slowperiod=26, signalperiod=9)
+    return data.dropna()  # Remove any missing values
+
+# Function to train the Random Forest model
+def train_ml_model(data, target_column):
+    X = data.drop(columns=[target_column])
+    y = data[target_column]
+
+    # Train/Test split (80% train, 20% test)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+    model = RandomForestRegressor(n_estimators=100, random_state=42)
+    model.fit(X_train, y_train)
+
+    # Predict on test data
+    y_pred = model.predict(X_test)
+
+    # Calculate the Mean Squared Error (MSE)
+    mse = mean_squared_error(y_test, y_pred)
+    st.write(f"Model Trained. Test MSE: {mse:.2f}")
+
+    return model
+
+# Function to predict the next day's LTP using the trained model
+def predict_ltp_using_ml(model, data):
+    features = data.drop(columns=['LTP'])  # Drop the target column
+    predicted_ltp = model.predict(features.tail(1))  # Predict for the last row
+    return round(predicted_ltp[0], 2)
 
 # Main logic for prediction
 if st.button("Get Prediction"):
-    ticker_price = fetch_ticker_data(ticker_symbol)
-    if ticker_price is None:
+    data = fetch_ticker_data(ticker_symbol)
+    if data is None:
         st.warning(f"Could not fetch data for {ticker_name}.")
     else:
-        st.write(f"Current price for {ticker_name}: {ticker_price}")
+        st.write(f"Current price for {ticker_name}: {data['Close'].iloc[-1]}")
 
         # Fetch India VIX
         india_vix_ticker = yf.Ticker("^INDIAVIX")
         try:
-            india_vix = india_vix_ticker.history(period="1d", interval="1m")["Close"].iloc[-1]
+            india_vix = india_vix_ticker.history(period="30d", interval="1d")["Close"].iloc[-1]
         except:
             india_vix = 15.0  # Default VIX value if fetching fails
             st.write("Warning: Using default India VIX value.")
@@ -135,19 +159,25 @@ if st.button("Get Prediction"):
         st.write(f"India VIX: {india_vix}")
 
         # Fetch S&P 500 data
-        sp500_price = fetch_sp500_data()
-        if sp500_price is None:
+        sp500_data = fetch_sp500_data()
+        if sp500_data is None:
             st.warning("Could not fetch S&P 500 data.")
         else:
-            st.write(f"Current S&P 500 price: {sp500_price}")
+            st.write(f"Current S&P 500 price: {sp500_data.iloc[-1]}")
 
         # Fetch news sentiment
         sentiment_score = get_news_sentiment(ticker_name)
         st.write(f"Sentiment Score based on news: {sentiment_score}")
 
-        # Predict LTP
-        predicted_ltp = predict_ltp(ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score)
-        st.write(f"Predicted LTP for next day: {predicted_ltp}")
+        # Add technical indicators to the data
+        data_with_indicators = add_technical_indicators(data)
+
+        # Train the ML model (this could be done offline and saved for real-time use)
+        model = train_ml_model(data_with_indicators, target_column='LTP')
+
+        # Predict LTP using the ML model
+        predicted_ltp = predict_ltp_using_ml(model, data_with_indicators)
+        st.write(f"Predicted LTP for next day (ML-based): {predicted_ltp}")
 
         # Stop Loss and Max LTP
         stop_loss = predicted_ltp * 0.98
