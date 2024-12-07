@@ -5,6 +5,7 @@ import torch
 from transformers import BertTokenizer, BertForSequenceClassification
 from torch.nn.functional import softmax
 import requests
+from textblob import TextBlob
 from datetime import datetime, timedelta
 
 # Streamlit UI setup
@@ -78,22 +79,35 @@ def get_news_sentiment(ticker_name):
         response.raise_for_status()  # Ensure the request was successful
         data = response.json()
 
-        if 'articles' in data:
+        if 'articles' in data and data['articles']:
             articles = data['articles']
-            headlines = [article['title'] for article in articles]
-            sentiment_score = get_sentiment_score(headlines)
-            return sentiment_score
+            headlines = [article['title'] for article in articles if article['title']]
+            if headlines:
+                sentiment_score = get_sentiment_score(headlines)
+                return sentiment_score
+            else:
+                st.write("Warning: No valid headlines found.")
+                return 0
         else:
-            st.write("Error: No articles found.")
+            st.write("Warning: No articles found.")
             return 0
     except requests.exceptions.RequestException as e:
         st.write(f"Error fetching news: {e}")
         return 0  # Return 0 if there's an error
 
+# Function to calculate sentiment score from headlines
 def get_sentiment_score(news_headlines):
     sentiment_score = 0
+    # Ensure that headlines are valid and not empty
     for headline in news_headlines:
-        sentiment_score += TextBlob(headline).sentiment.polarity
+        try:
+            # Check if headline is a valid string and perform sentiment analysis
+            if isinstance(headline, str) and headline.strip():
+                sentiment_score += TextBlob(headline).sentiment.polarity
+        except Exception as e:
+            st.write(f"Error analyzing sentiment for headline: {headline}. Error: {e}")
+    
+    # Avoid division by zero if there are no valid headlines
     return sentiment_score / len(news_headlines) if news_headlines else 0
 
 # Function to predict LTP for the selected ticker
