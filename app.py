@@ -55,8 +55,10 @@ def get_market_data():
 # Function to fetch option chain data using NSEpy
 def fetch_option_chain(expiry_date, banknifty_price):
     try:
-        # Get expiry date for BankNifty options
-        expiry = get_expiry_date(symbol="BANKNIFTY", year=expiry_date.year, month=expiry_date.month)
+        # Get the expiry date for BankNifty options
+        year = expiry_date.year
+        month = expiry_date.month
+        expiry = get_expiry_date(symbol="BANKNIFTY", year=year, month=month)
 
         # Define a range of strikes around the current BankNifty price
         strikes = [banknifty_price - 200, banknifty_price - 100, banknifty_price, banknifty_price + 100, banknifty_price + 200]
@@ -92,7 +94,7 @@ def predict_ltp(current_ltp, spy_price, nifty_price, strike_price, banknifty_pri
 def recommend_strikes(option_chain, banknifty_price):
     recommendations = []
 
-    # Calculate proximity of each strike to the current BankNifty price
+    # Calculate the proximity of each strike to the current BankNifty price
     for call_data, put_data in option_chain:
         if not call_data.empty and not put_data.empty:
             call_strike = call_data['Strike Price'].iloc[0]
