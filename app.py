@@ -4,11 +4,12 @@ from datetime import datetime
 import random
 
 # Streamlit UI setup
-st.title("BankNifty Options Prediction for Intraday Trading")
+st.title("BankNifty Options Prediction for Intraday Trading with Dynamic Strike Recommendations")
 st.write("""
     This app predicts the next day's movement for BankNifty based on real-time market data.
     Enter the details for the BankNifty option you're interested in, and get predictions for the next day.
     You can manually enter the **LTP** for the selected strike price.
+    The app also suggests **dynamic strike recommendations** based on market conditions.
 """)
 
 # Input fields for the user
@@ -39,12 +40,36 @@ def get_market_data():
         nifty_price = nifty.history(period="1d", interval="1m")["Close"].iloc[-1]
         india_vix = vix.history(period="1d", interval="1m")["Close"].iloc[-1]
 
+        st.write(f"S&P 500 Price: {spy_price}")
+        st.write(f"Nifty 50 Price: {nifty_price}")
+        st.write(f"India VIX: {india_vix}")
+
         return spy_price, nifty_price, india_vix
     except Exception as e:
         st.write(f"Error fetching market data: {e}")
         return None, None, None
 
-# Updated prediction function
+# Function to fetch Option Chain Data (Calls and Puts)
+def fetch_option_chain(expiry_date, banknifty_price):
+    try:
+        strikes = [banknifty_price - 200, banknifty_price - 100, banknifty_price, banknifty_price + 100, banknifty_price + 200]
+
+        calls = []
+        puts = []
+
+        for strike in strikes:
+            call_data = yf.Ticker(f"BANKNIFTY{strike}CE")
+            put_data = yf.Ticker(f"BANKNIFTY{strike}PE")
+
+            calls.append(call_data)
+            puts.append(put_data)
+
+        return calls, puts
+    except Exception as e:
+        st.write(f"Error fetching option chain: {e}")
+        return None, None
+
+# Function to calculate predicted LTP
 def predict_ltp(current_ltp, spy_price, nifty_price, strike_price, banknifty_price, india_vix):
     global_sentiment_factor = (spy_price * 0.0015) + (nifty_price * 0.005) + (india_vix * 0.1)
 
@@ -57,6 +82,31 @@ def predict_ltp(current_ltp, spy_price, nifty_price, strike_price, banknifty_pri
 
     predicted_ltp = current_ltp + global_sentiment_factor + strike_impact_factor + (current_ltp * random_factor)
     return round(predicted_ltp, 2)
+
+# Function to recommend strikes based on OI and IV
+def recommend_strikes(calls, puts):
+    recommendations = []
+
+    # Sort strikes based on open interest and proximity to BankNifty price
+    for call, put in zip(calls, puts):
+        call_oi = call.history(period="1d")["Open Interest"].iloc[-1]
+        put_oi = put.history(period="1d")["Open Interest"].iloc[-1]
+        call_iv = call.history(period="1d")["Implied Volatility"].iloc[-1]
+        put_iv = put.history(period="1d")["Implied Volatility"].iloc[-1]
+
+        recommendations.append({
+            'strike': call.history(period="1d")["Strike Price"].iloc[0],
+            'call_oi': call_oi,
+            'put_oi': put_oi,
+            'call_iv': call_iv,
+            'put_iv': put_iv,
+            'proximity': abs(call.history(period="1d")["Strike Price"].iloc[0] - banknifty_price)
+        })
+
+    # Sort by Open Interest and proximity to BankNifty
+    recommendations.sort(key=lambda x: (x['call_oi'] + x['put_oi'], x['proximity']), reverse=True)
+
+    return recommendations
 
 # Main logic
 if st.button("Get Prediction"):
@@ -76,17 +126,26 @@ if st.button("Get Prediction"):
 
             st.write(f"Manually input LTP: {ltp}")
 
-            predicted_ltp = predict_ltp(ltp, spy_price, nifty_price, strike_price, banknifty_price, india_vix)
-            st.write(f"Predicted LTP for next day: {predicted_ltp}")
-
-            stop_loss = predicted_ltp * 0.985
-            max_ltp = predicted_ltp * 1.02
-            st.write(f"Stop Loss: {round(stop_loss, 2)}")
-            st.write(f"Maximum LTP: {round(max_ltp, 2)}")
-
-            if predicted_ltp > ltp:
-                st.write("Recommendation: Profit")
-                st.write(f"Expected Profit: {round(predicted_ltp - ltp, 2)}")
+            # Fetch option chain for dynamic strikes
+            calls, puts = fetch_option_chain(expiry_date, banknifty_price)
+            if calls is None or puts is None:
+                st.warning("Could not fetch option chain. Please try again later.")
             else:
-                st.write("Recommendation: Loss")
-                st.write(f"Expected Loss: {round(ltp - predicted_ltp, 2)}")
+                recommendations = recommend_strikes(calls, puts)
+                st.write("**Recommended Strikes Based on Open Interest and IV**")
+                for rec in recommendations[:5]:  # Show top 5 recommended strikes
+                    st.write(f"Strike: {rec['strike']}, Call OI: {rec['call_oi']}, Put OI: {rec['put_oi']}, Call IV: {rec['call_iv']}, Put IV: {rec['put_iv']}, Proximity to BankNifty: {rec['proximity']}")
+
+                predicted_ltp = predict_ltp(ltp, spy_price, nifty_price, strike_price, banknifty_price, india_vix)
+                st.write(f"Predicted LTP for next day: {predicted_ltp}")
+
+                stop_loss, max_ltp = adjust_for_volatility(predicted_ltp, india_vix)
+                st.write(f"Stop Loss: {round(stop_loss, 2)}")
+                st.write(f"Maximum LTP: {round(max_ltp, 2)}")
+
+                if predicted_ltp > ltp:
+                    st.write("Recommendation: Profit")
+                    st.write(f"Expected Profit: {round(predicted_ltp - ltp, 2)}")
+                else:
+                    st.write("Recommendation: Loss")
+                    st.write(f"Expected Loss: {round(ltp - predicted_ltp, 2)}")
