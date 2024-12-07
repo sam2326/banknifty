@@ -19,27 +19,6 @@ st.markdown("""
     You can select multiple indices or stocks like **BankNifty**, **Nifty 50**, **Reliance**, and more.
 """)
 
-# Styling the components
-st.markdown(
-    """
-    <style>
-    .css-18e3th9 {
-        background-color: #f4f4f4;
-    }
-    .stButton>button {
-        background-color: #007bff;
-        color: white;
-        padding: 10px;
-        font-size: 16px;
-        border-radius: 5px;
-    }
-    .stSelectbox>div {
-        font-size: 16px;
-    }
-    </style>
-    """, unsafe_allow_html=True
-)
-
 # Supported Tickers
 SUPPORTED_TICKERS = {
     "BankNifty": "^NSEBANK",
@@ -185,10 +164,6 @@ def auto_refresh():
         st.write("Recommendation: Loss")
         st.write(f"Expected Loss: {round(ltp - predicted_ltp, 2)}")
 
-    # Refresh every 5 seconds
-    time.sleep(5)
-    st.experimental_rerun()
-
-# Start auto-refresh when the button is clicked
+# Add a button to start the auto-refresh
 if st.button("Start Auto-Refresh"):
     auto_refresh()
