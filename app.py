@@ -1,18 +1,17 @@
 import yfinance as yf
 import streamlit as st
 import random
-import pandas as pd
-import numpy as np
-from datetime import datetime, timedelta
-from sklearn.ensemble import RandomForestRegressor
-from textblob import TextBlob
+import torch
+from transformers import BertTokenizer, BertForSequenceClassification
+from torch.nn.functional import softmax
 import requests
+from datetime import datetime, timedelta
 
 # Streamlit UI setup
-st.title("Multi-Index Options Prediction App")
+st.title("Enhanced Multi-Index Options Prediction App")
 st.write("""
-    This app predicts the next day's movement for options based on real-time market data.
-    Now, you can select multiple indices or stocks like **BankNifty**, **Nifty 50**, and even individual stocks.
+    This app predicts the next day's movement for options based on real-time market data, including sentiment analysis.
+    You can select multiple indices or stocks like **BankNifty**, **Nifty 50**, **Reliance**, and more.
 """)
 
 # Supported Tickers
@@ -34,6 +33,20 @@ strike_price = st.number_input("Enter Strike Price", min_value=0, value=53700)
 option_type = st.selectbox("Select Option Type", ["Call", "Put"])
 ltp = st.number_input("Enter Current LTP", min_value=0.0, value=765.50, step=0.05)
 
+# Load FinBERT for Sentiment Analysis
+tokenizer = BertTokenizer.from_pretrained('yiyanghkust/finbert-tone', do_lower_case=False)
+model = BertForSequenceClassification.from_pretrained('yiyanghkust/finbert-tone')
+
+# Function to get financial sentiment using FinBERT
+def get_financial_sentiment(text):
+    inputs = tokenizer(text, return_tensors="pt", truncation=True, padding=True)
+    outputs = model(**inputs)
+    probs = softmax(outputs.logits, dim=-1)
+    sentiment = torch.argmax(probs).item()
+
+    sentiment_map = {0: "Negative", 1: "Neutral", 2: "Positive"}
+    return sentiment_map[sentiment]
+
 # Function to fetch data for selected ticker
 def fetch_ticker_data(ticker):
     try:
@@ -50,16 +63,15 @@ def fetch_sp500_data():
     try:
         sp500 = yf.Ticker("^GSPC")
         data = sp500.history(period="1d", interval="1m")
-        current_sp500_price = data["Close"].iloc[-1]
-        return current_sp500_price
+        return data["Close"].iloc[-1]
     except Exception as e:
         st.write(f"Error fetching S&P 500 data: {e}")
         return None
 
-# Function to get news sentiment score for a given index/stock
+# Function to get news sentiment for a given index/stock
 def get_news_sentiment(ticker_name):
     api_key = "990f863a4f65430a99f9b0cac257f432"  # Your NewsAPI key
-    url = f'https://newsapi.org/v2/everything?q={ticker_name}&apiKey={api_key}'
+    url = f'https://newsapi.org/v2/everything?q={ticker_name} OR RBI OR "Reserve Bank of India"&apiKey={api_key}'
 
     try:
         response = requests.get(url)
