@@ -4,7 +4,7 @@ requests
 textblob
 torch
 transformers
-pandas
-numpy
+pandas==1.3.0
+numpy==1.21.0
 scikit-learn
-pandas_ta
+pandas_ta==0.3.13
