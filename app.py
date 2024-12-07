@@ -13,10 +13,6 @@ import requests
 from py_vollib.black_scholes import black_scholes
 from py_vollib.black_scholes.implied_volatility import implied_volatility
 from py_vollib.black_scholes.greeks import analytical
-import talib
-import tensorflow as tf
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM, Dense
 
 # Streamlit UI setup
 st.title("BankNifty Options Prediction for Intraday Trading with Dynamic Strike Recommendations")
@@ -66,7 +62,6 @@ def get_market_data():
 
 # Function to calculate the expiry date (last Thursday of the given month)
 def calculate_expiry_date(year, month):
-    # The expiry date is the last Thursday of the given month
     next_month = month + 1 if month < 12 else 1
     next_month_year = year if month < 12 else year + 1
     first_day_next_month = datetime(next_month_year, next_month, 1)
@@ -75,7 +70,7 @@ def calculate_expiry_date(year, month):
     expiry_date = first_day_next_month - timedelta(days=days_to_subtract)
     return expiry_date
 
-# Function to fetch option chain data using NSEpy
+# Function to fetch option chain data using NSEpy (simplified for now)
 def fetch_option_chain(expiry_date, banknifty_price):
     try:
         year = expiry_date.year
@@ -86,14 +81,13 @@ def fetch_option_chain(expiry_date, banknifty_price):
 
         option_chain = []
         for strike in strikes:
-            # Placeholder for fetching actual option chain data
             option_chain.append((strike, strike + random.uniform(0, 50), strike - random.uniform(0, 50)))
         return option_chain
     except Exception as e:
         st.write(f"Error fetching option chain: {e}")
         return None
 
-# Function to predict the LTP based on global sentiment and volatility
+# Function to calculate predicted LTP
 def predict_ltp(current_ltp, spy_price, nifty_price, strike_price, banknifty_price, india_vix):
     global_sentiment_factor = (spy_price * 0.0015) + (nifty_price * 0.005) + (india_vix * 0.1)
 
@@ -130,34 +124,11 @@ def adjust_for_volatility(predicted_ltp, india_vix):
 
 # Adding technical indicators (RSI, MACD, SMA)
 def add_technical_indicators(data):
-    data['RSI'] = talib.RSI(data['BankNifty_Close'], timeperiod=14)
-    data['MACD'], data['MACD_signal'], _ = talib.MACD(data['BankNifty_Close'], fastperiod=12, slowperiod=26, signalperiod=9)
-    data['SMA_50'] = talib.SMA(data['BankNifty_Close'], timeperiod=50)
-    data['SMA_200'] = talib.SMA(data['BankNifty_Close'], timeperiod=200)
-
+    data['RSI'] = calculate_rsi(data['BankNifty_Close'])
+    data['SMA_50'] = calculate_moving_averages(data['BankNifty_Close'], 50)
+    data['SMA_200'] = calculate_moving_averages(data['BankNifty_Close'], 200)
+    data['MACD'], data['MACD_signal'] = calculate_macd(data['BankNifty_Close'])
     return data
-
-# Backtesting with historical data (using machine learning models)
-def backtest_model():
-    options_data = get_historical_data()
-
-    features = options_data[['BankNifty_Close']]
-    target = options_data['LTP']
-
-    X_train, X_test, y_train, y_test = train_test_split(features, target, test_size=0.2, random_state=42)
-
-    model = RandomForestRegressor(n_estimators=100, random_state=42)
-    model.fit(X_train, y_train)
-
-    y_pred = model.predict(X_test)
-
-    mse = mean_squared_error(y_test, y_pred)
-    print(f"Mean Squared Error: {mse}")
-
-    plt.plot(y_test.index, y_test, label="Actual LTP", color='blue')
-    plt.plot(y_test.index, y_pred, label="Predicted LTP", color='red')
-    plt.legend()
-    plt.show()
 
 # Main logic to get predictions
 if st.button("Get Prediction"):
