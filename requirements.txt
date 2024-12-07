@@ -7,4 +7,3 @@ transformers
 pandas
 numpy
 scikit-learn
-TA-Lib
