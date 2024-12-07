@@ -9,7 +9,6 @@ from datetime import datetime, timedelta
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error
-import talib  # Using TA-Lib for technical indicators
 
 # Streamlit UI setup
 st.title("Enhanced Multi-Index Options Prediction App with Machine Learning")
@@ -90,13 +89,28 @@ def get_sentiment_score(news_headlines):
     
     return sentiment_score / len(news_headlines) if news_headlines else 0
 
-# Function to add technical indicators as features using TA-Lib
+# Function to add technical indicators manually
 def add_technical_indicators(data):
-    data['SMA_50'] = talib.SMA(data['Close'], timeperiod=50)
-    data['SMA_200'] = talib.SMA(data['Close'], timeperiod=200)
-    data['RSI'] = talib.RSI(data['Close'], timeperiod=14)
-    data['MACD'], _, _ = talib.MACD(data['Close'], fastperiod=12, slowperiod=26, signalperiod=9)
-    return data.dropna()  # Remove any missing values
+    # Moving Average (50 periods)
+    data['SMA_50'] = data['Close'].rolling(window=50).mean()
+
+    # Moving Average (200 periods)
+    data['SMA_200'] = data['Close'].rolling(window=200).mean()
+
+    # Relative Strength Index (RSI)
+    delta = data['Close'].diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+    rs = gain / loss
+    data['RSI'] = 100 - (100 / (1 + rs))
+
+    # MACD: Moving Average Convergence Divergence
+    exp12 = data['Close'].ewm(span=12, adjust=False).mean()
+    exp26 = data['Close'].ewm(span=26, adjust=False).mean()
+    data['MACD'] = exp12 - exp26
+    data['MACD_Signal'] = data['MACD'].ewm(span=9, adjust=False).mean()
+
+    return data.dropna()  # Remove any rows with NaN values
 
 # Function to train the Random Forest model
 def train_ml_model(data, target_column):
