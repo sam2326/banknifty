@@ -63,6 +63,10 @@ def fetch_option_chain(expiry_date, banknifty_price):
             calls.append(call_data)
             puts.append(put_data)
 
+            # Debug: Show columns
+            st.write(f"Columns for Strike {strike} (Call): {call_data.columns}")
+            st.write(f"Columns for Strike {strike} (Put): {put_data.columns}")
+
         return calls, puts
     except Exception as e:
         st.write(f"Error fetching option chain: {e}")
@@ -75,12 +79,14 @@ def display_option_chain(calls, puts):
     # Display Call Options
     st.write("**Call Options**")
     for call in calls:
-        st.dataframe(call[['Strike Price', 'Last Traded Price', 'Open Interest']])
+        # Display only available columns
+        st.dataframe(call[['Strike Price', 'Close', 'Open Interest']])
 
     # Display Put Options
     st.write("**Put Options**")
     for put in puts:
-        st.dataframe(put[['Strike Price', 'Last Traded Price', 'Open Interest']])
+        # Display only available columns
+        st.dataframe(put[['Strike Price', 'Close', 'Open Interest']])
 
 # Main logic
 if st.button("Fetch Option Chain"):
