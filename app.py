@@ -60,12 +60,15 @@ def fetch_option_chain(expiry_date, banknifty_price):
                 expiry_date=expiry_date
             )
             
+            # Debugging: Print the fetched data
+            st.write(f"Fetched data for Strike {strike} (Call):")
+            st.write(call_data.head())  # Print first few rows
+
+            st.write(f"Fetched data for Strike {strike} (Put):")
+            st.write(put_data.head())  # Print first few rows
+
             calls.append(call_data)
             puts.append(put_data)
-
-            # Debug: Show columns
-            st.write(f"Columns for Strike {strike} (Call): {call_data.columns}")
-            st.write(f"Columns for Strike {strike} (Put): {put_data.columns}")
 
         return calls, puts
     except Exception as e:
@@ -79,14 +82,24 @@ def display_option_chain(calls, puts):
     # Display Call Options
     st.write("**Call Options**")
     for call in calls:
-        # Display only available columns
-        st.dataframe(call[['Strike Price', 'Close', 'Open Interest']])
+        st.write(f"Data for Strike {call['Strike Price'].iloc[0]} (Call):")
+        st.write(call.head())  # Display the first few rows for debugging
+
+        if not call.empty:
+            st.dataframe(call[['Strike Price', 'Last', 'Open Interest']])
+        else:
+            st.write(f"No data available for Strike {call['Strike Price'].iloc[0]} (Call).")
 
     # Display Put Options
     st.write("**Put Options**")
     for put in puts:
-        # Display only available columns
-        st.dataframe(put[['Strike Price', 'Close', 'Open Interest']])
+        st.write(f"Data for Strike {put['Strike Price'].iloc[0]} (Put):")
+        st.write(put.head())  # Display the first few rows for debugging
+
+        if not put.empty:
+            st.dataframe(put[['Strike Price', 'Last', 'Open Interest']])
+        else:
+            st.write(f"No data available for Strike {put['Strike Price'].iloc[0]} (Put).")
 
 # Main logic
 if st.button("Fetch Option Chain"):
