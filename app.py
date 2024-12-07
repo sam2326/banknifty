@@ -129,6 +129,17 @@ def recommend_strikes(option_chain, banknifty_price):
 
     return recommendations
 
+# Function to adjust Stop Loss and Maximum LTP based on volatility (India VIX)
+def adjust_for_volatility(predicted_ltp, india_vix):
+    # The volatility adjustment factor based on India VIX
+    volatility_factor = india_vix / 100  # Normalize VIX to a usable factor (VIX is often in percentage)
+
+    # Adjust Stop Loss and Maximum LTP based on volatility
+    stop_loss = predicted_ltp * (1 - (0.01 * volatility_factor))  # Stop Loss becomes wider with higher volatility
+    max_ltp = predicted_ltp * (1 + (0.02 * volatility_factor))  # Maximum LTP becomes higher with higher volatility
+
+    return stop_loss, max_ltp
+
 # Main logic
 if st.button("Get Prediction"):
     banknifty_price = get_banknifty_data()
