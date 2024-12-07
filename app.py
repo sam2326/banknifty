@@ -55,10 +55,10 @@ def get_market_data():
 # Function to fetch option chain data using NSEpy
 def fetch_option_chain(expiry_date, banknifty_price):
     try:
-        # Get the expiry date for BankNifty options
+        # Get the expiry date for BankNifty options (correct usage)
         year = expiry_date.year
         month = expiry_date.month
-        expiry = get_expiry_date(symbol="BANKNIFTY", year=year, month=month)
+        expiry = get_expiry_date(year=year, month=month)  # Correct usage of get_expiry_date
 
         # Define a range of strikes around the current BankNifty price
         strikes = [banknifty_price - 200, banknifty_price - 100, banknifty_price, banknifty_price + 100, banknifty_price + 200]
