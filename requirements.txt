@@ -1,10 +1,11 @@
-yfinance
 streamlit
+yfinance
 torch
 transformers
-requests
 textblob
 pandas
 numpy
+requests
+nsepy
 matplotlib
 seaborn
