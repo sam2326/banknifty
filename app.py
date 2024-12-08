@@ -4,16 +4,18 @@ import random
 import torch
 from transformers import BertTokenizer, BertForSequenceClassification
 from torch.nn.functional import softmax
-import pandas as pd
-from datetime import datetime, timedelta
 import requests
 from textblob import TextBlob
-from nsepy.derivatives import get_expiry_date  # Import for NSEpy
+from datetime import datetime, timedelta
+import time
 
 # Streamlit UI setup
+st.set_page_config(page_title="Enhanced Multi-Index Options Prediction", layout="wide")
+
+# Title and description
 st.title("Enhanced Multi-Index Options Prediction App")
-st.write("""
-    This app predicts the next day's movement for options based on real-time market data, sentiment analysis, and strike recommendations.
+st.markdown("""
+    This app predicts the next day's movement for options based on real-time market data, including sentiment analysis and machine learning predictions.
     You can select multiple indices or stocks like **BankNifty**, **Nifty 50**, **Reliance**, and more.
 """)
 
@@ -30,31 +32,8 @@ SUPPORTED_TICKERS = {
 ticker_name = st.selectbox("Select Index/Stock", list(SUPPORTED_TICKERS.keys()))
 ticker_symbol = SUPPORTED_TICKERS[ticker_name]
 
-# Fetch Available Expirations with Fallback Logic
-def get_available_expirations(ticker):
-    try:
-        if ticker == "^NSEBANK":
-            expirations = get_expiry_date(year=2024, month=12)  # Get expiry dates for BankNifty
-            if not expirations:
-                st.warning("No expiration dates available for BankNifty. Using default expiry.")
-                return ["2024-12-28"]  # Fallback expiration date
-            return expirations
-        else:
-            ticker_obj = yf.Ticker(ticker)
-            expirations = ticker_obj.options
-            if not expirations:
-                st.warning("No expiration dates available. Using default expiry.")
-                return ["2024-12-28"]  # Fallback for other tickers
-            return expirations
-    except Exception as e:
-        st.write(f"Error fetching available expirations: {e}")
-        return ["2024-12-28"]  # Default fallback date
-
-# Display Expiry Date Dropdown
-available_expirations = get_available_expirations(ticker_symbol)
-expiry_date = st.selectbox("Select Expiry Date", available_expirations)
-
 # Input fields
+expiry_date = st.date_input("Select Expiry Date", min_value=datetime.today())
 strike_price = st.number_input("Enter Strike Price", min_value=0, value=53700)
 option_type = st.selectbox("Select Option Type", ["Call", "Put"])
 ltp = st.number_input("Enter Current LTP", min_value=0.0, value=765.50, step=0.05)
@@ -62,6 +41,16 @@ ltp = st.number_input("Enter Current LTP", min_value=0.0, value=765.50, step=0.0
 # Load FinBERT for Sentiment Analysis
 tokenizer = BertTokenizer.from_pretrained('yiyanghkust/finbert-tone', do_lower_case=False)
 model = BertForSequenceClassification.from_pretrained('yiyanghkust/finbert-tone')
+
+# Function to get financial sentiment using FinBERT
+def get_financial_sentiment(text):
+    inputs = tokenizer(text, return_tensors="pt", truncation=True, padding=True)
+    outputs = model(**inputs)
+    probs = softmax(outputs.logits, dim=-1)
+    sentiment = torch.argmax(probs).item()
+
+    sentiment_map = {0: "Negative", 1: "Neutral", 2: "Positive"}
+    return sentiment_map[sentiment]
 
 # Function to fetch data for selected ticker
 def fetch_ticker_data(ticker):
@@ -74,50 +63,107 @@ def fetch_ticker_data(ticker):
         st.write(f"Error fetching data for {ticker}: {e}")
         return None
 
-# Fetch Option Chain Data with Expiration Validation
-def fetch_option_chain(ticker, expiry_date):
+# Function to fetch S&P 500 data
+def fetch_sp500_data():
     try:
-        ticker_obj = yf.Ticker(ticker)
-        available_expirations = ticker_obj.options
-
-        if expiry_date not in available_expirations:
-            st.warning(f"Selected expiration {expiry_date} not found. Available expirations: {available_expirations}")
-            return None, None
-
-        # Fetch option chain for the valid expiry date
-        options = ticker_obj.option_chain(expiry_date)
-        return options.calls, options.puts
+        sp500 = yf.Ticker("^GSPC")
+        data = sp500.history(period="1d", interval="1m")
+        return data["Close"].iloc[-1]
     except Exception as e:
-        st.write(f"Error fetching option chain: {e}")
-        return None, None
+        st.write(f"Error fetching S&P 500 data: {e}")
+        return None
 
-# Recommend Strikes Based on Proximity, OI, and IV
-def recommend_strikes(calls, puts, current_price):
-    calls['Proximity'] = abs(calls['strike'] - current_price)
-    puts['Proximity'] = abs(puts['strike'] - current_price)
-    recommended_calls = calls.sort_values(by=['Proximity', 'openInterest'], ascending=[True, False]).head(3)
-    recommended_puts = puts.sort_values(by=['Proximity', 'openInterest'], ascending=[True, False]).head(3)
-    return recommended_calls, recommended_puts
+# Function to get news sentiment for a given index/stock
+def get_news_sentiment(ticker_name):
+    api_key = "990f863a4f65430a99f9b0cac257f432"  # Your NewsAPI key
+    url = f'https://newsapi.org/v2/everything?q={ticker_name} OR RBI OR "interest rates" OR "monetary policy" OR "banking sector" OR "GDP growth" OR "inflation" OR "earnings report" OR "trade wars" OR "interest rate hikes" OR "acquisitions" OR "merger" OR "quarterly results"&apiKey={api_key}'
 
-# Main logic
-if st.button("Get Prediction and Recommended Strikes"):
-    if expiry_date:
-        ticker_price = fetch_ticker_data(ticker_symbol)
-        if ticker_price is None:
-            st.warning(f"Could not fetch data for {ticker_name}.")
+    try:
+        response = requests.get(url)
+        response.raise_for_status()  # Ensure the request was successful
+        data = response.json()
+
+        if 'articles' in data and data['articles']:
+            articles = data['articles']
+            headlines = [article['title'] for article in articles if article['title']]
+            sentiment_score = get_sentiment_score(headlines)
+            return sentiment_score
         else:
-            st.write(f"Current price for {ticker_name}: {ticker_price}")
+            st.write("Warning: No articles found.")
+            return 0
+    except requests.exceptions.RequestException as e:
+        st.write(f"Error fetching news: {e}")
+        return 0  # Return 0 if there's an error
 
-            # Fetch Option Chain
-            calls, puts = fetch_option_chain(ticker_symbol, expiry_date)
-            if calls is None or puts is None:
-                st.warning("Could not fetch option chain data.")
-            else:
-                # Recommend Strikes
-                recommended_calls, recommended_puts = recommend_strikes(calls, puts, ticker_price)
+# Function to calculate sentiment score from headlines
+def get_sentiment_score(news_headlines):
+    sentiment_score = 0
+    for headline in news_headlines:
+        try:
+            if isinstance(headline, str) and headline.strip():
+                sentiment_score += TextBlob(headline).sentiment.polarity
+        except Exception as e:
+            st.write(f"Error analyzing sentiment for headline: {headline}. Error: {e}")
+    
+    return sentiment_score / len(news_headlines) if news_headlines else 0
 
-                # Display Recommended Strikes
-                st.subheader("Recommended Call Strikes")
-                st.dataframe(recommended_calls[['strike', 'lastPrice', 'openInterest', 'impliedVolatility']])
-                st.subheader("Recommended Put Strikes")
-                st.dataframe(recommended_puts[['strike', 'lastPrice', 'openInterest', 'impliedVolatility']])
+# Function to predict LTP for the selected ticker
+def predict_ltp(current_ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score):
+    sentiment_factor = india_vix * 0.1 + sentiment_score * 0.05
+    strike_impact = (strike_price - ticker_price) * (0.01 if strike_price < ticker_price else -0.01)
+    sp500_impact = sp500_price * 0.005
+    random_factor = random.uniform(-0.01, 0.02)
+    predicted_ltp = current_ltp + sentiment_factor + strike_impact + sp500_impact + (current_ltp * random_factor)
+    return round(predicted_ltp, 2)
+
+# Main logic for prediction with auto-refresh (5 seconds interval)
+def auto_refresh():
+    # Fetch current data
+    ticker_price = fetch_ticker_data(ticker_symbol)
+    if ticker_price is None:
+        st.warning(f"Could not fetch data for {ticker_name}.")
+    else:
+        st.write(f"Current price for {ticker_name}: {ticker_price}")
+
+    # Fetch India VIX
+    india_vix_ticker = yf.Ticker("^INDIAVIX")
+    try:
+        india_vix = india_vix_ticker.history(period="1d", interval="1m")["Close"].iloc[-1]
+    except:
+        india_vix = 15.0  # Default VIX value if fetching fails
+        st.write("Warning: Using default India VIX value.")
+
+    st.write(f"India VIX: {india_vix}")
+
+    # Fetch S&P 500 data
+    sp500_price = fetch_sp500_data()
+    if sp500_price is None:
+        st.warning("Could not fetch S&P 500 data.")
+    else:
+        st.write(f"Current S&P 500 price: {sp500_price}")
+
+    # Fetch news sentiment
+    sentiment_score = get_news_sentiment(ticker_name)
+    st.write(f"Sentiment Score based on news: {sentiment_score}")
+
+    # Predict LTP
+    predicted_ltp = predict_ltp(ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score)
+    st.write(f"Predicted LTP for next day: {predicted_ltp}")
+
+    # Stop Loss and Max LTP
+    stop_loss = predicted_ltp * 0.98
+    max_ltp = predicted_ltp * 1.02
+    st.write(f"Stop Loss: {round(stop_loss, 2)}")
+    st.write(f"Maximum LTP: {round(max_ltp, 2)}")
+
+    # Recommendation
+    if predicted_ltp > ltp:
+        st.write("Recommendation: Profit")
+        st.write(f"Expected Profit: {round(predicted_ltp - ltp, 2)}")
+    else:
+        st.write("Recommendation: Loss")
+        st.write(f"Expected Loss: {round(ltp - predicted_ltp, 2)}")
+
+# Add a button to start the auto-refresh
+if st.button("Start Auto-Refresh"):
+    auto_refresh()
