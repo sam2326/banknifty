@@ -33,19 +33,21 @@ ticker_symbol = SUPPORTED_TICKERS[ticker_name]
 # Fetch Available Expirations with Fallback Logic
 def get_available_expirations(ticker):
     try:
-        ticker_obj = yf.Ticker(ticker)
-        expirations = ticker_obj.options
-        if not expirations:
-            st.warning("No expiration dates available. Using default expiry.")
-            return ["2024-12-28"]  # Replace with a valid fallback date
-        return expirations
+        if ticker == "^NSEBANK":
+            expirations = get_expiry_date(year=2024, month=12)  # Get expiry dates for BankNifty
+            if not expirations:
+                st.warning("No expiration dates available for BankNifty. Using default expiry.")
+                return ["2024-12-28"]  # Fallback expiration date
+            return expirations
+        else:
+            ticker_obj = yf.Ticker(ticker)
+            expirations = ticker_obj.options
+            if not expirations:
+                st.warning("No expiration dates available. Using default expiry.")
+                return ["2024-12-28"]  # Fallback for other tickers
+            return expirations
     except Exception as e:
         st.write(f"Error fetching available expirations: {e}")
-        # Fallback to NSEpy for BankNifty
-        if ticker == "^NSEBANK":
-            expirations = get_expiry_date(year=2024, month=12)
-            st.write(f"Available Expiry Dates for BankNifty: {expirations}")
-            return expirations if expirations else ["2024-12-28"]
         return ["2024-12-28"]  # Default fallback date
 
 # Display Expiry Date Dropdown
