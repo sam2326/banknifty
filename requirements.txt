@@ -5,7 +5,7 @@ transformers
 requests
 textblob
 pandas
-numpy
+numpy==1.23.3
 matplotlib
 seaborn
 pandas_ta
