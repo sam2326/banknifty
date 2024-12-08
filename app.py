@@ -57,11 +57,13 @@ def fetch_ticker_data(ticker):
     try:
         ticker_obj = yf.Ticker(ticker)
         data = ticker_obj.history(period="1d", interval="1m")
+        if data.empty:
+            return None, None  # Return None if data is empty
         current_price = data["Close"].iloc[-1]
-        return current_price
+        return current_price, data
     except Exception as e:
         st.write(f"Error fetching data for {ticker}: {e}")
-        return None
+        return None, None
 
 # Function to fetch S&P 500 data
 def fetch_sp500_data():
