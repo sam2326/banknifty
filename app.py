@@ -7,7 +7,7 @@ from torch.nn.functional import softmax
 import requests
 from textblob import TextBlob
 from datetime import datetime, timedelta
-import time
+import pandas_ta as ta
 
 # Streamlit UI setup
 st.set_page_config(page_title="Enhanced Multi-Index Options Prediction", layout="wide")
@@ -29,7 +29,7 @@ SUPPORTED_TICKERS = {
 }
 
 # Dropdown for selecting ticker
-ticker_name = st.selectbox("Select Index/Stock", list(SUPPORTED_TICKERS.keys()))
+ticker_name = st.selectbox("Select Ticker", list(SUPPORTED_TICKERS.keys()))
 ticker_symbol = SUPPORTED_TICKERS[ticker_name]
 
 # Input fields
@@ -58,10 +58,10 @@ def fetch_ticker_data(ticker):
         ticker_obj = yf.Ticker(ticker)
         data = ticker_obj.history(period="1d", interval="1m")
         current_price = data["Close"].iloc[-1]
-        return current_price
+        return current_price, data
     except Exception as e:
         st.write(f"Error fetching data for {ticker}: {e}")
-        return None
+        return None, None
 
 # Function to fetch S&P 500 data
 def fetch_sp500_data():
@@ -116,45 +116,84 @@ def predict_ltp(current_ltp, ticker_price, strike_price, india_vix, sp500_price,
     predicted_ltp = current_ltp + sentiment_factor + strike_impact + sp500_impact + (current_ltp * random_factor)
     return round(predicted_ltp, 2)
 
+# Function to fetch option chain for selected ticker and expiry date
+def fetch_option_chain(ticker, expiry_date):
+    try:
+        option_data = yf.Ticker(ticker).option_chain(expiry_date)
+        return option_data.calls, option_data.puts
+    except Exception as e:
+        st.write(f"Error fetching option chain data: {e}")
+        return None, None
+
+# Function to recommend strikes based on predicted LTP
+def recommend_strikes_based_on_prediction(predicted_ltp, strikes_data, option_type="Call"):
+    """
+    Recommend strikes based on the predicted LTP for the next day.
+    """
+    recommended_strikes = []
+    # Set a range around predicted LTP (for example, ±100 points)
+    strike_range = 100
+
+    for idx, row in strikes_data.iterrows():
+        strike_price = row['strike']
+        
+        # Recommend strikes that are within a range of the predicted LTP
+        if option_type == "Call" and strike_price > predicted_ltp - strike_range and strike_price < predicted_ltp + strike_range:
+            recommended_strikes.append(strike_price)
+        elif option_type == "Put" and strike_price < predicted_ltp + strike_range and strike_price > predicted_ltp - strike_range:
+            recommended_strikes.append(strike_price)
+
+    # Sort the recommended strikes by proximity to predicted LTP
+    recommended_strikes.sort(key=lambda x: abs(x - predicted_ltp))
+
+    return recommended_strikes[:5]  # Return top 5 closest strikes
+
 # Main logic for prediction with auto-refresh (5 seconds interval)
 def auto_refresh():
-    # Fetch current data
-    ticker_price = fetch_ticker_data(ticker_symbol)
+    ticker_price, ticker_data = fetch_ticker_data(ticker_symbol)
     if ticker_price is None:
         st.warning(f"Could not fetch data for {ticker_name}.")
     else:
         st.write(f"Current price for {ticker_name}: {ticker_price}")
 
-    # Fetch India VIX
     india_vix_ticker = yf.Ticker("^INDIAVIX")
     try:
         india_vix = india_vix_ticker.history(period="1d", interval="1m")["Close"].iloc[-1]
     except:
-        india_vix = 15.0  # Default VIX value if fetching fails
+        india_vix = 15.0
         st.write("Warning: Using default India VIX value.")
 
     st.write(f"India VIX: {india_vix}")
 
-    # Fetch S&P 500 data
     sp500_price = fetch_sp500_data()
     if sp500_price is None:
         st.warning("Could not fetch S&P 500 data.")
     else:
         st.write(f"Current S&P 500 price: {sp500_price}")
 
-    # Fetch news sentiment
     sentiment_score = get_news_sentiment(ticker_name)
     st.write(f"Sentiment Score based on news: {sentiment_score}")
 
-    # Predict LTP
     predicted_ltp = predict_ltp(ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score)
     st.write(f"Predicted LTP for next day: {predicted_ltp}")
 
-    # Stop Loss and Max LTP
     stop_loss = predicted_ltp * 0.98
     max_ltp = predicted_ltp * 1.02
     st.write(f"Stop Loss: {round(stop_loss, 2)}")
     st.write(f"Maximum LTP: {round(max_ltp, 2)}")
+
+    # Strike recommendations based on predicted LTP
+    calls, puts = fetch_option_chain(ticker_symbol, expiry_date)
+
+    if calls is None or puts is None:
+        st.write("Error fetching option chain data.")
+    else:
+        # Recommend strikes based on predicted LTP
+        recommended_call_strikes = recommend_strikes_based_on_prediction(predicted_ltp, calls, option_type="Call")
+        st.write("Recommended Call Option Strikes: ", recommended_call_strikes)
+
+        recommended_put_strikes = recommend_strikes_based_on_prediction(predicted_ltp, puts, option_type="Put")
+        st.write("Recommended Put Option Strikes: ", recommended_put_strikes)
 
     # Recommendation
     if predicted_ltp > ltp:
