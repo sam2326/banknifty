@@ -116,53 +116,83 @@ def predict_ltp(current_ltp, ticker_price, strike_price, india_vix, sp500_price,
     predicted_ltp = current_ltp + sentiment_factor + strike_impact + sp500_impact + (current_ltp * random_factor)
     return round(predicted_ltp, 2)
 
+# Function to fetch option chain for selected ticker and expiry date
+def fetch_option_chain(ticker, expiry_date):
+    try:
+        option_data = yf.Ticker(ticker).option_chain(expiry_date)
+        return option_data.calls, option_data.puts
+    except Exception as e:
+        st.write(f"Error fetching option chain data: {e}")
+        return None, None
+
+# Function to recommend strikes based on proximity to BankNifty
+def recommend_strikes(banknifty_price, strikes_data, option_type="Call"):
+    recommended_strikes = []
+
+    for idx, row in strikes_data.iterrows():
+        strike_price = row['strike']
+        
+        if option_type == "Call" and strike_price > banknifty_price:
+            recommended_strikes.append(strike_price)
+        elif option_type == "Put" and strike_price < banknifty_price:
+            recommended_strikes.append(strike_price)
+
+    recommended_strikes.sort(key=lambda x: abs(x - banknifty_price))
+
+    return recommended_strikes[:5]  # Return top 5 closest strikes
+
 # Main logic for prediction with auto-refresh (5 seconds interval)
 def auto_refresh():
-    # Fetch current data
-    ticker_price = fetch_ticker_data(ticker_symbol)
+    ticker_price, ticker_data = fetch_ticker_data(ticker_symbol)
     if ticker_price is None:
         st.warning(f"Could not fetch data for {ticker_name}.")
     else:
         st.write(f"Current price for {ticker_name}: {ticker_price}")
 
-    # Fetch India VIX
     india_vix_ticker = yf.Ticker("^INDIAVIX")
     try:
         india_vix = india_vix_ticker.history(period="1d", interval="1m")["Close"].iloc[-1]
     except:
-        india_vix = 15.0  # Default VIX value if fetching fails
+        india_vix = 15.0
         st.write("Warning: Using default India VIX value.")
 
     st.write(f"India VIX: {india_vix}")
 
-    # Fetch S&P 500 data
     sp500_price = fetch_sp500_data()
     if sp500_price is None:
         st.warning("Could not fetch S&P 500 data.")
     else:
         st.write(f"Current S&P 500 price: {sp500_price}")
 
-    # Fetch news sentiment
     sentiment_score = get_news_sentiment(ticker_name)
     st.write(f"Sentiment Score based on news: {sentiment_score}")
 
-    # Predict LTP
     predicted_ltp = predict_ltp(ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score)
     st.write(f"Predicted LTP for next day: {predicted_ltp}")
 
-    # Stop Loss and Max LTP
     stop_loss = predicted_ltp * 0.98
     max_ltp = predicted_ltp * 1.02
     st.write(f"Stop Loss: {round(stop_loss, 2)}")
     st.write(f"Maximum LTP: {round(max_ltp, 2)}")
 
-    # Recommendation
     if predicted_ltp > ltp:
         st.write("Recommendation: Profit")
         st.write(f"Expected Profit: {round(predicted_ltp - ltp, 2)}")
     else:
         st.write("Recommendation: Loss")
         st.write(f"Expected Loss: {round(ltp - predicted_ltp, 2)}")
+
+    # Displaying strike recommendations
+    calls, puts = fetch_option_chain(ticker_symbol, expiry_date)
+
+    if calls is None or puts is None:
+        st.write("Error fetching option chain data.")
+    else:
+        recommended_call_strikes = recommend_strikes(ticker_price, calls, option_type="Call")
+        st.write("Recommended Call Option Strikes: ", recommended_call_strikes)
+
+        recommended_put_strikes = recommend_strikes(ticker_price, puts, option_type="Put")
+        st.write("Recommended Put Option Strikes: ", recommended_put_strikes)
 
 # Add a button to start the auto-refresh
 if st.button("Start Auto-Refresh"):
