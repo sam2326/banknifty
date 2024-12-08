@@ -125,26 +125,19 @@ def fetch_option_chain(ticker, expiry_date):
         st.write(f"Error fetching option chain data: {e}")
         return None, None
 
-# Function to recommend strikes based on predicted LTP
-def recommend_strikes_based_on_prediction(predicted_ltp, strikes_data, option_type="Call"):
-    """
-    Recommend strikes based on the predicted LTP for the next day.
-    """
+# Function to recommend strikes based on proximity to BankNifty
+def recommend_strikes(banknifty_price, strikes_data, option_type="Call"):
     recommended_strikes = []
-    # Set a range around predicted LTP (for example, ±100 points)
-    strike_range = 100
 
     for idx, row in strikes_data.iterrows():
         strike_price = row['strike']
         
-        # Recommend strikes that are within a range of the predicted LTP
-        if option_type == "Call" and strike_price > predicted_ltp - strike_range and strike_price < predicted_ltp + strike_range:
+        if option_type == "Call" and strike_price > banknifty_price:
             recommended_strikes.append(strike_price)
-        elif option_type == "Put" and strike_price < predicted_ltp + strike_range and strike_price > predicted_ltp - strike_range:
+        elif option_type == "Put" and strike_price < banknifty_price:
             recommended_strikes.append(strike_price)
 
-    # Sort the recommended strikes by proximity to predicted LTP
-    recommended_strikes.sort(key=lambda x: abs(x - predicted_ltp))
+    recommended_strikes.sort(key=lambda x: abs(x - banknifty_price))
 
     return recommended_strikes[:5]  # Return top 5 closest strikes
 
@@ -182,26 +175,24 @@ def auto_refresh():
     st.write(f"Stop Loss: {round(stop_loss, 2)}")
     st.write(f"Maximum LTP: {round(max_ltp, 2)}")
 
-    # Strike recommendations based on predicted LTP
-    calls, puts = fetch_option_chain(ticker_symbol, expiry_date)
-
-    if calls is None or puts is None:
-        st.write("Error fetching option chain data.")
-    else:
-        # Recommend strikes based on predicted LTP
-        recommended_call_strikes = recommend_strikes_based_on_prediction(predicted_ltp, calls, option_type="Call")
-        st.write("Recommended Call Option Strikes: ", recommended_call_strikes)
-
-        recommended_put_strikes = recommend_strikes_based_on_prediction(predicted_ltp, puts, option_type="Put")
-        st.write("Recommended Put Option Strikes: ", recommended_put_strikes)
-
-    # Recommendation
     if predicted_ltp > ltp:
         st.write("Recommendation: Profit")
         st.write(f"Expected Profit: {round(predicted_ltp - ltp, 2)}")
     else:
         st.write("Recommendation: Loss")
         st.write(f"Expected Loss: {round(ltp - predicted_ltp, 2)}")
+
+    # Displaying strike recommendations
+    calls, puts = fetch_option_chain(ticker_symbol, expiry_date)
+
+    if calls is None or puts is None:
+        st.write("Error fetching option chain data.")
+    else:
+        recommended_call_strikes = recommend_strikes(ticker_price, calls, option_type="Call")
+        st.write("Recommended Call Option Strikes: ", recommended_call_strikes)
+
+        recommended_put_strikes = recommend_strikes(ticker_price, puts, option_type="Put")
+        st.write("Recommended Put Option Strikes: ", recommended_put_strikes)
 
 # Add a button to start the auto-refresh
 if st.button("Start Auto-Refresh"):
