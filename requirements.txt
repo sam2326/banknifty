@@ -9,3 +9,14 @@ requests
 nsepy
 matplotlib
 seaborn
+streamlit
+yfinance
+torch
+transformers
+requests
+textblob
+pandas
+numpy
+matplotlib
+seaborn
+pandas_ta
