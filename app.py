@@ -8,6 +8,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 import requests
 from textblob import TextBlob
+from nsepy.derivatives import get_expiry_date  # Import for NSEpy
 
 # Streamlit UI setup
 st.title("Enhanced Multi-Index Options Prediction App")
@@ -29,22 +30,27 @@ SUPPORTED_TICKERS = {
 ticker_name = st.selectbox("Select Index/Stock", list(SUPPORTED_TICKERS.keys()))
 ticker_symbol = SUPPORTED_TICKERS[ticker_name]
 
-# Fetch Available Expirations
+# Fetch Available Expirations with Fallback Logic
 def get_available_expirations(ticker):
     try:
         ticker_obj = yf.Ticker(ticker)
-        return ticker_obj.options
+        expirations = ticker_obj.options
+        if not expirations:
+            st.warning("No expiration dates available. Using default expiry.")
+            return ["2024-12-28"]  # Replace with a valid fallback date
+        return expirations
     except Exception as e:
         st.write(f"Error fetching available expirations: {e}")
-        return []
+        # Fallback to NSEpy for BankNifty
+        if ticker == "^NSEBANK":
+            expirations = get_expiry_date(year=2024, month=12)
+            st.write(f"Available Expiry Dates for BankNifty: {expirations}")
+            return expirations if expirations else ["2024-12-28"]
+        return ["2024-12-28"]  # Default fallback date
 
 # Display Expiry Date Dropdown
 available_expirations = get_available_expirations(ticker_symbol)
-if available_expirations:
-    expiry_date = st.selectbox("Select Expiry Date", available_expirations)
-else:
-    st.warning("No expiration dates available.")
-    expiry_date = None
+expiry_date = st.selectbox("Select Expiry Date", available_expirations)
 
 # Input fields
 strike_price = st.number_input("Enter Strike Price", min_value=0, value=53700)
