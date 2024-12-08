@@ -29,7 +29,7 @@ SUPPORTED_TICKERS = {
 }
 
 # Dropdown for selecting ticker
-ticker_name = st.selectbox("Select Index/Stock", list(SUPPORTED_TICKERS.keys()))
+ticker_name = st.selectbox("Select Ticker", list(SUPPORTED_TICKERS.keys()))
 ticker_symbol = SUPPORTED_TICKERS[ticker_name]
 
 # Input fields
@@ -57,13 +57,11 @@ def fetch_ticker_data(ticker):
     try:
         ticker_obj = yf.Ticker(ticker)
         data = ticker_obj.history(period="1d", interval="1m")
-        if data.empty:
-            return None, None  # Return None if data is empty
         current_price = data["Close"].iloc[-1]
-        return current_price, data
+        return current_price
     except Exception as e:
         st.write(f"Error fetching data for {ticker}: {e}")
-        return None, None
+        return None
 
 # Function to fetch S&P 500 data
 def fetch_sp500_data():
@@ -118,6 +116,16 @@ def predict_ltp(current_ltp, ticker_price, strike_price, india_vix, sp500_price,
     predicted_ltp = current_ltp + sentiment_factor + strike_impact + sp500_impact + (current_ltp * random_factor)
     return round(predicted_ltp, 2)
 
+# Function to fetch available expirations for the selected ticker
+def fetch_available_expirations(ticker):
+    try:
+        ticker_obj = yf.Ticker(ticker)
+        expirations = ticker_obj.options  # Get the available expiration dates
+        return expirations
+    except Exception as e:
+        st.write(f"Error fetching expirations for {ticker}: {e}")
+        return []
+
 # Function to fetch option chain for selected ticker and expiry date
 def fetch_option_chain(ticker, expiry_date):
     try:
@@ -145,12 +153,24 @@ def recommend_strikes(banknifty_price, strikes_data, option_type="Call"):
 
 # Main logic for prediction with auto-refresh (5 seconds interval)
 def auto_refresh():
-    ticker_price, ticker_data = fetch_ticker_data(ticker_symbol)
+    ticker_price = fetch_ticker_data(ticker_symbol)
     if ticker_price is None:
         st.warning(f"Could not fetch data for {ticker_name}.")
     else:
         st.write(f"Current price for {ticker_name}: {ticker_price}")
 
+    # Fetch available expiration dates
+    available_expirations = fetch_available_expirations(ticker_symbol)
+    if not available_expirations:
+        st.write("No available expiration dates found for the selected ticker.")
+        expiry_date = datetime.today().strftime('%Y-%m-%d')  # Default to today's date
+    else:
+        # Automatically select the nearest available expiration date
+        expiry_date = min(available_expirations, key=lambda x: abs(datetime.strptime(x, "%Y-%m-%d") - datetime.today()))
+    
+    st.write(f"Using Expiry Date: {expiry_date}")
+
+    # Fetch India VIX
     india_vix_ticker = yf.Ticker("^INDIAVIX")
     try:
         india_vix = india_vix_ticker.history(period="1d", interval="1m")["Close"].iloc[-1]
@@ -160,15 +180,18 @@ def auto_refresh():
 
     st.write(f"India VIX: {india_vix}")
 
+    # Fetch S&P 500 data
     sp500_price = fetch_sp500_data()
     if sp500_price is None:
         st.warning("Could not fetch S&P 500 data.")
     else:
         st.write(f"Current S&P 500 price: {sp500_price}")
 
+    # Fetch news sentiment
     sentiment_score = get_news_sentiment(ticker_name)
     st.write(f"Sentiment Score based on news: {sentiment_score}")
 
+    # Predict LTP
     predicted_ltp = predict_ltp(ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score)
     st.write(f"Predicted LTP for next day: {predicted_ltp}")
 
