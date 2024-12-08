@@ -32,7 +32,7 @@ SUPPORTED_TICKERS = {
 
 # Sidebar for Inputs
 st.sidebar.title("User Inputs")
-ticker_name = st.sidebar.selectbox("Select Index/Stock", list(SUPPORTED_TICKERS.keys()))
+ticker_name = st.sidebar.selectbox("Select Ticker", list(SUPPORTED_TICKERS.keys()))
 ticker_symbol = SUPPORTED_TICKERS[ticker_name]
 expiry_date = st.sidebar.date_input("Select Expiry Date", min_value=datetime.today())
 strike_price = st.sidebar.number_input("Enter Strike Price", min_value=0, value=53700)
@@ -49,6 +49,7 @@ def get_financial_sentiment(text):
     outputs = model(**inputs)
     probs = softmax(outputs.logits, dim=-1)
     sentiment = torch.argmax(probs).item()
+
     sentiment_map = {0: "Negative", 1: "Neutral", 2: "Positive"}
     return sentiment_map[sentiment]
 
@@ -63,35 +64,66 @@ def fetch_ticker_data(ticker):
         st.write(f"Error fetching data for {ticker}: {e}")
         return None, None
 
-# Fetching additional data functions...
-# (same as your current functions)
+# Function to fetch S&P 500 data
+def fetch_sp500_data():
+    try:
+        sp500 = yf.Ticker("^GSPC")
+        data = sp500.history(period="1d", interval="1m")
+        return data["Close"].iloc[-1]
+    except Exception as e:
+        st.write(f"Error fetching S&P 500 data: {e}")
+        return None
 
-# Function to plot the stock data
-def plot_stock_data(data, ticker_name):
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=data.index, y=data['Close'], mode='lines', name=f'{ticker_name} Price'))
-    fig.update_layout(title=f'{ticker_name} Stock Data', xaxis_title='Time', yaxis_title='Price', template="plotly_dark")
-    st.plotly_chart(fig)
+# Function to get news sentiment for a given index/stock
+def get_news_sentiment(ticker_name):
+    api_key = "990f863a4f65430a99f9b0cac257f432"  # Your NewsAPI key
+    url = f'https://newsapi.org/v2/everything?q={ticker_name} OR RBI OR "interest rates" OR "monetary policy" OR "banking sector" OR "GDP growth" OR "inflation" OR "earnings report" OR "trade wars" OR "interest rate hikes" OR "acquisitions" OR "merger" OR "quarterly results"&apiKey={api_key}'
 
-# Function to plot sentiment trend
-def plot_sentiment_trend(sentiment_scores, ticker_name):
-    fig, ax = plt.subplots(figsize=(8, 6))
-    ax.plot(sentiment_scores, label=f'Sentiment for {ticker_name}', color='orange')
-    ax.set_xlabel('Time')
-    ax.set_ylabel('Sentiment Score')
-    ax.set_title('News Sentiment Trend')
-    ax.legend(loc='best')
-    st.pyplot(fig)
+    try:
+        response = requests.get(url)
+        response.raise_for_status()  # Ensure the request was successful
+        data = response.json()
 
-# Auto-refresh Section with visual indicators
+        if 'articles' in data and data['articles']:
+            articles = data['articles']
+            headlines = [article['title'] for article in articles if article['title']]
+            sentiment_score = get_sentiment_score(headlines)
+            return sentiment_score
+        else:
+            st.write("Warning: No articles found.")
+            return 0
+    except requests.exceptions.RequestException as e:
+        st.write(f"Error fetching news: {e}")
+        return 0  # Return 0 if there's an error
+
+# Function to calculate sentiment score from headlines
+def get_sentiment_score(news_headlines):
+    sentiment_score = 0
+    for headline in news_headlines:
+        try:
+            if isinstance(headline, str) and headline.strip():
+                sentiment_score += TextBlob(headline).sentiment.polarity
+        except Exception as e:
+            st.write(f"Error analyzing sentiment for headline: {headline}. Error: {e}")
+    
+    return sentiment_score / len(news_headlines) if news_headlines else 0
+
+# Function to predict LTP for the selected ticker
+def predict_ltp(current_ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score):
+    sentiment_factor = india_vix * 0.1 + sentiment_score * 0.05
+    strike_impact = (strike_price - ticker_price) * (0.01 if strike_price < ticker_price else -0.01)
+    sp500_impact = sp500_price * 0.005
+    random_factor = random.uniform(-0.01, 0.02)
+    predicted_ltp = current_ltp + sentiment_factor + strike_impact + sp500_impact + (current_ltp * random_factor)
+    return round(predicted_ltp, 2)
+
+# Main logic for prediction with auto-refresh (5 seconds interval)
 def auto_refresh():
     ticker_price, ticker_data = fetch_ticker_data(ticker_symbol)
     if ticker_price is None:
         st.warning(f"Could not fetch data for {ticker_name}.")
     else:
         st.write(f"Current price for {ticker_name}: {ticker_price}")
-        # Plotting stock data
-        plot_stock_data(ticker_data, ticker_name)
 
     india_vix_ticker = yf.Ticker("^INDIAVIX")
     try:
