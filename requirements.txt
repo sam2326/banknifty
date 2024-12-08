@@ -2,17 +2,6 @@ streamlit
 yfinance
 torch
 transformers
-textblob
-pandas
-numpy
-requests
-nsepy
-matplotlib
-seaborn
-streamlit
-yfinance
-torch
-transformers
 requests
 textblob
 pandas
