@@ -170,14 +170,3 @@ if st.button("Get Prediction"):
         st.write(f"**Target Price:** {target_price}")
         st.write(f"**Risk-to-Reward Ratio (RRR):** {rrr}")
         st.write(f"**Suggestion:** {suggestion}")
-
----
-
-### **Revised `requirements.txt`**
-```plaintext
-yfinance
-streamlit
-transformers>=4.33.2
-torch
-requests
-textblob
