@@ -7,7 +7,6 @@ from torch.nn.functional import softmax
 import requests
 from textblob import TextBlob
 from datetime import datetime, timedelta
-import time
 import pandas as pd
 
 # Streamlit UI setup
@@ -29,15 +28,19 @@ SUPPORTED_TICKERS = {
     "HDFC Bank": "HDFCBANK.NS"
 }
 
-# Dropdown for selecting ticker
-ticker_name = st.selectbox("Select Index/Stock", list(SUPPORTED_TICKERS.keys()))
-ticker_symbol = SUPPORTED_TICKERS[ticker_name]
+# Two-column layout
+col1, col2 = st.columns([2, 3])
 
-# Input fields
-expiry_date = st.date_input("Select Expiry Date", min_value=datetime.today())
-strike_price = st.number_input("Enter Strike Price", min_value=0, value=53700)
-option_type = st.selectbox("Select Option Type", ["Call", "Put"])
-ltp = st.number_input("Enter Current LTP", min_value=0.0, value=765.50, step=0.05)
+# Sidebar for user inputs
+with col1:
+    st.header("User Inputs")
+    ticker_name = st.selectbox("Select Index/Stock", list(SUPPORTED_TICKERS.keys()))
+    ticker_symbol = SUPPORTED_TICKERS[ticker_name]
+
+    expiry_date = st.date_input("Select Expiry Date", min_value=datetime.today())
+    strike_price = st.number_input("Enter Strike Price", min_value=0, value=53700)
+    option_type = st.selectbox("Select Option Type", ["Call", "Put"])
+    ltp = st.number_input("Enter Current LTP", min_value=0.0, value=765.50, step=0.05)
 
 # Load FinBERT for Sentiment Analysis
 tokenizer = BertTokenizer.from_pretrained('yiyanghkust/finbert-tone', do_lower_case=False)
@@ -150,6 +153,7 @@ def auto_refresh():
     st.write(f"Stop Loss: {round(stop_loss, 2)}")
     st.write(f"Maximum LTP: {round(max_ltp, 2)}")
 
+    # Determine action based on LTP prediction
     if predicted_ltp > ltp:
         suggestion = "Buy"
         color = 'green'
@@ -157,7 +161,7 @@ def auto_refresh():
         suggestion = "Avoid"
         color = 'red'
 
-    # Display the table with color-coded results
+    # Display the results in a clean table layout
     result = {
         "Action": [suggestion],
         "Entry Price": [ltp],
