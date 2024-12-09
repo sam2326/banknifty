@@ -122,6 +122,7 @@ def auto_refresh():
     ticker_price = fetch_ticker_data(ticker_symbol)
     if ticker_price is None:
         st.warning(f"Could not fetch data for {ticker_name}.")
+        return
     else:
         st.write(f"Current price for {ticker_name}: {ticker_price}")
 
@@ -163,6 +164,10 @@ def auto_refresh():
     else:
         st.write("Recommendation: Loss")
         st.write(f"Expected Loss: {round(ltp - predicted_ltp, 2)}")
+
+    # Auto-refresh logic
+    time.sleep(5)
+    st.experimental_rerun()
 
 # Add a button to start the auto-refresh
 if st.button("Start Auto-Refresh"):
