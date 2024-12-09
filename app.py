@@ -57,7 +57,7 @@ def fetch_ticker_data(ticker):
     try:
         ticker_obj = yf.Ticker(ticker)
         data = ticker_obj.history(period="1d", interval="1m")
-        current_price = data["Close"].iloc[-1]
+        current_price = round(data["Close"].iloc[-1], 2)
         return current_price
     except Exception as e:
         st.write(f"Error fetching data for {ticker}: {e}")
@@ -68,7 +68,7 @@ def fetch_sp500_data():
     try:
         sp500 = yf.Ticker("^GSPC")
         data = sp500.history(period="1d", interval="1m")
-        return data["Close"].iloc[-1]
+        return round(data["Close"].iloc[-1], 2)
     except Exception as e:
         st.write(f"Error fetching S&P 500 data: {e}")
         return None
@@ -87,7 +87,7 @@ def get_news_sentiment(ticker_name):
             articles = data['articles']
             headlines = [article['title'] for article in articles if article['title']]
             sentiment_score = get_sentiment_score(headlines)
-            return sentiment_score
+            return round(sentiment_score, 2)
         else:
             st.write("Warning: No articles found.")
             return 0
@@ -122,47 +122,43 @@ def auto_refresh():
     ticker_price = fetch_ticker_data(ticker_symbol)
     if ticker_price is None:
         st.warning(f"Could not fetch data for {ticker_name}.")
-    else:
-        st.write(f"Current price for {ticker_name}: {ticker_price}")
+        return
 
     # Fetch India VIX
     india_vix_ticker = yf.Ticker("^INDIAVIX")
     try:
-        india_vix = india_vix_ticker.history(period="1d", interval="1m")["Close"].iloc[-1]
+        india_vix = round(india_vix_ticker.history(period="1d", interval="1m")["Close"].iloc[-1], 2)
     except:
-        india_vix = 15.0  # Default VIX value if fetching fails
+        india_vix = 15.0
         st.write("Warning: Using default India VIX value.")
-
-    st.write(f"India VIX: {india_vix}")
 
     # Fetch S&P 500 data
     sp500_price = fetch_sp500_data()
-    if sp500_price is None:
-        st.warning("Could not fetch S&P 500 data.")
-    else:
-        st.write(f"Current S&P 500 price: {sp500_price}")
 
     # Fetch news sentiment
     sentiment_score = get_news_sentiment(ticker_name)
-    st.write(f"Sentiment Score based on news: {sentiment_score}")
 
     # Predict LTP
     predicted_ltp = predict_ltp(ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score)
-    st.write(f"Predicted LTP for next day: {predicted_ltp}")
+    stop_loss = round(predicted_ltp * 0.98, 2)
+    max_ltp = round(predicted_ltp * 1.02, 2)
+    expected_profit_or_loss = round(predicted_ltp - ltp, 2)
 
-    # Stop Loss and Max LTP
-    stop_loss = predicted_ltp * 0.98
-    max_ltp = predicted_ltp * 1.02
-    st.write(f"Stop Loss: {round(stop_loss, 2)}")
-    st.write(f"Maximum LTP: {round(max_ltp, 2)}")
+    # Output results in a formatted manner
+    st.markdown(f"### Market Data for {ticker_name}")
+    st.write(f"- **Current Price:** {ticker_price}")
+    st.write(f"- **India VIX:** {india_vix}")
+    st.write(f"- **S&P 500 Price:** {sp500_price}")
+    st.write(f"- **News Sentiment Score:** {sentiment_score}")
 
-    # Recommendation
-    if predicted_ltp > ltp:
-        st.write("Recommendation: Profit")
-        st.write(f"Expected Profit: {round(predicted_ltp - ltp, 2)}")
-    else:
-        st.write("Recommendation: Loss")
-        st.write(f"Expected Loss: {round(ltp - predicted_ltp, 2)}")
+    st.markdown("### Prediction Results")
+    st.write(f"- **Predicted LTP:** {predicted_ltp}")
+    st.write(f"- **Stop Loss:** {stop_loss}")
+    st.write(f"- **Maximum LTP:** {max_ltp}")
+
+    recommendation = "Profit" if predicted_ltp > ltp else "Loss"
+    st.markdown(f"### Recommendation: **{recommendation}**")
+    st.markdown(f"- **Expected {recommendation}:** {expected_profit_or_loss}")
 
 # Add a button to start the auto-refresh
 if st.button("Start Auto-Refresh"):
