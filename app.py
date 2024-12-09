@@ -7,7 +7,6 @@ from torch.nn.functional import softmax
 import requests
 from textblob import TextBlob
 from datetime import datetime, timedelta
-import time
 
 # Streamlit UI setup
 st.set_page_config(page_title="Trading Predictions", layout="wide")
@@ -113,8 +112,8 @@ def predict_ltp(current_ltp, ticker_price, strike_price, india_vix, sp500_price,
     predicted_ltp = current_ltp + sentiment_factor + strike_impact + sp500_impact + (current_ltp * random_factor)
     return round(predicted_ltp, 2)
 
-# Main logic for prediction with auto-refresh (5 seconds interval)
-def auto_refresh():
+# Main logic for prediction
+def predict():
     ticker_price, ticker_data = fetch_ticker_data(ticker_symbol)
     if ticker_price is None:
         st.warning(f"Could not fetch data for {ticker_name}.")
@@ -162,10 +161,6 @@ def auto_refresh():
     else:
         st.write("Suggestion: Avoid")
 
-    # Trigger auto-refresh again after 5 seconds
-    time.sleep(5)
-    st.experimental_rerun()
-
-# Add a button to start the auto-refresh
-if st.button("Start Auto-Refresh"):
-    auto_refresh()
+# Add a button to trigger prediction manually
+if st.button("Get Prediction"):
+    predict()
