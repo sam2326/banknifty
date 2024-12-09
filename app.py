@@ -28,12 +28,12 @@ SUPPORTED_TICKERS = {
 }
 
 # Sidebar for inputs
-ticker_name = st.selectbox("Select Index/Stock", list(SUPPORTED_TICKERS.keys()))
+ticker_name = st.sidebar.selectbox("Select Index/Stock", list(SUPPORTED_TICKERS.keys()))
 ticker_symbol = SUPPORTED_TICKERS[ticker_name]
-expiry_date = st.date_input("Select Expiry Date", min_value=datetime.today())
-strike_price = st.number_input("Enter Strike Price", min_value=0, value=53700)
-option_type = st.selectbox("Select Option Type", ["Call", "Put"])
-ltp = st.number_input("Enter Current LTP", min_value=0.0, value=765.50, step=0.05)
+expiry_date = st.sidebar.date_input("Select Expiry Date", min_value=datetime.today())
+strike_price = st.sidebar.number_input("Enter Strike Price", min_value=0, value=53700)
+option_type = st.sidebar.selectbox("Select Option Type", ["Call", "Put"])
+ltp = st.sidebar.number_input("Enter Current LTP", min_value=0.0, value=765.50, step=0.05)
 
 # Load FinBERT for Sentiment Analysis
 tokenizer = BertTokenizer.from_pretrained('yiyanghkust/finbert-tone', do_lower_case=False)
@@ -103,13 +103,12 @@ def predict_ltp(current_ltp, ticker_price, strike_price, india_vix, sp500_price,
     predicted_ltp = current_ltp + sentiment_factor + strike_impact + sp500_impact + (current_ltp * random_factor)
     return round(predicted_ltp, 2)
 
-# Refresh logic
+# Main logic for prediction
 def refresh_data():
     ticker_price = fetch_ticker_data(ticker_symbol)
     if ticker_price is None:
         st.warning(f"Could not fetch data for {ticker_name}.")
-    else:
-        st.write(f"Current price for {ticker_name}: {ticker_price}")
+        return
 
     india_vix_ticker = yf.Ticker("^INDIAVIX")
     try:
@@ -142,8 +141,9 @@ def refresh_data():
     else:
         st.write("Recommendation: Loss")
         st.write(f"Expected Loss: {round(ltp - predicted_ltp, 2)}")
-    st.experimental_rerun()
 
-# Start auto-refresh
+# Button for auto-refresh
 if st.button("Start Auto-Refresh"):
-    refresh_data()
+    while True:
+        refresh_data()
+        time.sleep(5)
