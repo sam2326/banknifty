@@ -142,8 +142,13 @@ def refresh_data():
         st.write("Recommendation: Loss")
         st.write(f"Expected Loss: {round(ltp - predicted_ltp, 2)}")
 
-# Button for auto-refresh
+# Auto-refresh using Streamlit session state
+if "auto_refresh" not in st.session_state:
+    st.session_state.auto_refresh = False
+
 if st.button("Start Auto-Refresh"):
-    while True:
-        refresh_data()
-        time.sleep(5)
+    st.session_state.auto_refresh = not st.session_state.auto_refresh
+
+if st.session_state.auto_refresh:
+    refresh_data()
+    st.experimental_rerun()
