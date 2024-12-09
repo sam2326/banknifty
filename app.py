@@ -7,7 +7,6 @@ from torch.nn.functional import softmax
 import requests
 from textblob import TextBlob
 from datetime import datetime, timedelta
-import pandas as pd
 
 # Streamlit UI setup
 st.set_page_config(page_title="Enhanced Multi-Index Options Prediction", layout="wide")
@@ -28,19 +27,16 @@ SUPPORTED_TICKERS = {
     "HDFC Bank": "HDFCBANK.NS"
 }
 
-# Two-column layout
-col1, col2 = st.columns([2, 3])
-
-# Sidebar for user inputs
-with col1:
-    st.header("User Inputs")
-    ticker_name = st.selectbox("Select Index/Stock", list(SUPPORTED_TICKERS.keys()))
-    ticker_symbol = SUPPORTED_TICKERS[ticker_name]
-
-    expiry_date = st.date_input("Select Expiry Date", min_value=datetime.today())
-    strike_price = st.number_input("Enter Strike Price", min_value=0, value=53700)
-    option_type = st.selectbox("Select Option Type", ["Call", "Put"])
-    ltp = st.number_input("Enter Current LTP", min_value=0.0, value=765.50, step=0.05)
+# Sidebar for User Inputs
+st.sidebar.title("User Inputs")
+ticker_name = st.sidebar.selectbox("Select Ticker", list(SUPPORTED_TICKERS.keys()))
+ticker_symbol = SUPPORTED_TICKERS[ticker_name]
+expiry_date = st.sidebar.date_input("Select Expiry Date", min_value=datetime.today())
+strike_price = st.sidebar.number_input("Enter Strike Price", min_value=0, value=53700)
+option_type = st.sidebar.selectbox("Select Option Type", ["Call", "Put"])
+ltp = st.sidebar.number_input("Enter Current LTP", min_value=0.0, value=765.50, step=0.05)
+risk_percentage = st.sidebar.number_input("Enter Risk Percentage (%)", min_value=0.0, value=2.0, step=0.1)
+profit_percentage = st.sidebar.number_input("Enter Profit Percentage (%)", min_value=0.0, value=5.0, step=0.1)
 
 # Load FinBERT for Sentiment Analysis
 tokenizer = BertTokenizer.from_pretrained('yiyanghkust/finbert-tone', do_lower_case=False)
@@ -62,10 +58,10 @@ def fetch_ticker_data(ticker):
         ticker_obj = yf.Ticker(ticker)
         data = ticker_obj.history(period="1d", interval="1m")
         current_price = data["Close"].iloc[-1]
-        return current_price, data
+        return current_price
     except Exception as e:
         st.write(f"Error fetching data for {ticker}: {e}")
-        return None, None
+        return None
 
 # Function to fetch S&P 500 data
 def fetch_sp500_data():
@@ -120,14 +116,16 @@ def predict_ltp(current_ltp, ticker_price, strike_price, india_vix, sp500_price,
     predicted_ltp = current_ltp + sentiment_factor + strike_impact + sp500_impact + (current_ltp * random_factor)
     return round(predicted_ltp, 2)
 
-# Main logic for prediction with auto-refresh (5 seconds interval)
-def auto_refresh():
-    ticker_price, ticker_data = fetch_ticker_data(ticker_symbol)
+# Main logic for prediction
+def show_results():
+    # Fetch current data
+    ticker_price = fetch_ticker_data(ticker_symbol)
     if ticker_price is None:
         st.warning(f"Could not fetch data for {ticker_name}.")
     else:
         st.write(f"Current price for {ticker_name}: {ticker_price}")
 
+    # Fetch India VIX
     india_vix_ticker = yf.Ticker("^INDIAVIX")
     try:
         india_vix = india_vix_ticker.history(period="1d", interval="1m")["Close"].iloc[-1]
@@ -136,44 +134,39 @@ def auto_refresh():
         st.write("Warning: Using default India VIX value.")
     st.write(f"India VIX: {india_vix}")
 
+    # Fetch S&P 500 data
     sp500_price = fetch_sp500_data()
     if sp500_price is None:
         st.warning("Could not fetch S&P 500 data.")
     else:
         st.write(f"Current S&P 500 price: {sp500_price}")
 
+    # Fetch news sentiment
     sentiment_score = get_news_sentiment(ticker_name)
     st.write(f"Sentiment Score based on news: {sentiment_score}")
 
+    # Predict LTP
     predicted_ltp = predict_ltp(ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score)
     st.write(f"Predicted LTP for next day: {predicted_ltp}")
 
-    stop_loss = predicted_ltp * 0.98
-    max_ltp = predicted_ltp * 1.02
+    # Stop Loss and Max LTP
+    stop_loss = predicted_ltp * (1 - risk_percentage / 100)
+    target_price = predicted_ltp * (1 + profit_percentage / 100)
+
     st.write(f"Stop Loss: {round(stop_loss, 2)}")
-    st.write(f"Maximum LTP: {round(max_ltp, 2)}")
+    st.write(f"Target Price: {round(target_price, 2)}")
 
-    # Determine action based on LTP prediction
-    if predicted_ltp > ltp:
-        suggestion = "Buy"
-        color = 'green'
+    # Risk-to-Reward Ratio Calculation
+    risk_to_reward = (target_price - stop_loss) / (stop_loss - predicted_ltp)
+
+    st.write(f"Risk-to-Reward Ratio (RRR): {round(risk_to_reward, 2)}")
+
+    # Trading Suggestion based on RRR
+    if risk_to_reward > 2:
+        st.write("**Suggestion**: Buy")
     else:
-        suggestion = "Avoid"
-        color = 'red'
-
-    # Display the results in a clean table layout
-    result = {
-        "Action": [suggestion],
-        "Entry Price": [ltp],
-        "Exit Price": [predicted_ltp],
-        "Stop Loss": [round(stop_loss, 2)],
-        "Risk-to-Reward Ratio (RRR)": [round(((predicted_ltp - ltp) / (ltp - stop_loss)), 2)],
-        "Recommendation": [f"<span style='color:{color};'>{suggestion}</span>"]
-    }
-
-    df = pd.DataFrame(result)
-    st.markdown(df.to_html(escape=False), unsafe_allow_html=True)
+        st.write("**Suggestion**: Avoid")
 
 # Add a button to start the auto-refresh
 if st.button("Start Auto-Refresh"):
-    auto_refresh()
+    show_results()
