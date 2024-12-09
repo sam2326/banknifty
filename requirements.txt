@@ -1,6 +1,6 @@
 streamlit
 yfinance
-torch
+torch>=1.13.1
 transformers>=4.33.2
 requests
 textblob
