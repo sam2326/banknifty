@@ -9,14 +9,10 @@ from textblob import TextBlob
 from datetime import datetime, timedelta
 
 # Streamlit UI setup
-st.set_page_config(page_title="Enhanced Multi-Index Options Prediction", layout="wide")
+st.set_page_config(page_title="Options Prediction", layout="wide")
 
-# Title and description
-st.title("Enhanced Multi-Index Options Prediction App")
-st.markdown("""
-    This app predicts the next day's movement for options based on real-time market data, including sentiment analysis and machine learning predictions.
-    You can select multiple indices or stocks like **BankNifty**, **Nifty 50**, **Reliance**, and more.
-""")
+# Simple headline
+st.title("Options Trading Prediction")
 
 # Supported Tickers
 SUPPORTED_TICKERS = {
@@ -27,9 +23,9 @@ SUPPORTED_TICKERS = {
     "HDFC Bank": "HDFCBANK.NS"
 }
 
-# Sidebar for User Inputs
-st.sidebar.title("User Inputs")
-ticker_name = st.sidebar.selectbox("Select Ticker", list(SUPPORTED_TICKERS.keys()))
+# Sidebar for Inputs
+st.sidebar.title("Trade Settings")
+ticker_name = st.sidebar.selectbox("Select Index/Stock", list(SUPPORTED_TICKERS.keys()))
 ticker_symbol = SUPPORTED_TICKERS[ticker_name]
 expiry_date = st.sidebar.date_input("Select Expiry Date", min_value=datetime.today())
 strike_price = st.sidebar.number_input("Enter Strike Price", min_value=0, value=53700)
