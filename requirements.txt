@@ -1,7 +1,7 @@
 streamlit
 yfinance
 torch
-transformers
+transformers 4:33:2
 requests
 textblob
 pandas
