@@ -1,9 +1,9 @@
-streamlit
-yfinance
+streamlit>=1.10.0
+yfinance>=0.2.10
 torch>=1.13.1
 transformers>=4.33.2
-requests
-textblob
+requests>=2.28.1
+textblob>=0.15.3
 pandas
 numpy
 matplotlib
