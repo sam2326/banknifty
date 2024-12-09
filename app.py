@@ -7,7 +7,6 @@ from torch.nn.functional import softmax
 import requests
 from textblob import TextBlob
 from datetime import datetime, timedelta
-import time
 
 # Streamlit UI setup
 st.set_page_config(page_title="Enhanced Multi-Index Options Prediction", layout="wide")
@@ -28,11 +27,9 @@ SUPPORTED_TICKERS = {
     "HDFC Bank": "HDFCBANK.NS"
 }
 
-# Dropdown for selecting ticker
+# Sidebar for inputs
 ticker_name = st.selectbox("Select Index/Stock", list(SUPPORTED_TICKERS.keys()))
 ticker_symbol = SUPPORTED_TICKERS[ticker_name]
-
-# Input fields
 expiry_date = st.date_input("Select Expiry Date", min_value=datetime.today())
 strike_price = st.number_input("Enter Strike Price", min_value=0, value=53700)
 option_type = st.selectbox("Select Option Type", ["Call", "Put"])
@@ -41,16 +38,6 @@ ltp = st.number_input("Enter Current LTP", min_value=0.0, value=765.50, step=0.0
 # Load FinBERT for Sentiment Analysis
 tokenizer = BertTokenizer.from_pretrained('yiyanghkust/finbert-tone', do_lower_case=False)
 model = BertForSequenceClassification.from_pretrained('yiyanghkust/finbert-tone')
-
-# Function to get financial sentiment using FinBERT
-def get_financial_sentiment(text):
-    inputs = tokenizer(text, return_tensors="pt", truncation=True, padding=True)
-    outputs = model(**inputs)
-    probs = softmax(outputs.logits, dim=-1)
-    sentiment = torch.argmax(probs).item()
-
-    sentiment_map = {0: "Negative", 1: "Neutral", 2: "Positive"}
-    return sentiment_map[sentiment]
 
 # Function to fetch data for selected ticker
 def fetch_ticker_data(ticker):
@@ -116,59 +103,57 @@ def predict_ltp(current_ltp, ticker_price, strike_price, india_vix, sp500_price,
     predicted_ltp = current_ltp + sentiment_factor + strike_impact + sp500_impact + (current_ltp * random_factor)
     return round(predicted_ltp, 2)
 
-# Main logic for prediction with auto-refresh (5 seconds interval)
-def auto_refresh():
-    # Fetch current data
-    ticker_price = fetch_ticker_data(ticker_symbol)
-    if ticker_price is None:
-        st.warning(f"Could not fetch data for {ticker_name}.")
-        return
-    else:
-        st.write(f"Current price for {ticker_name}: {ticker_price}")
-
-    # Fetch India VIX
-    india_vix_ticker = yf.Ticker("^INDIAVIX")
-    try:
-        india_vix = india_vix_ticker.history(period="1d", interval="1m")["Close"].iloc[-1]
-    except:
-        india_vix = 15.0  # Default VIX value if fetching fails
-        st.write("Warning: Using default India VIX value.")
-
-    st.write(f"India VIX: {india_vix}")
-
-    # Fetch S&P 500 data
-    sp500_price = fetch_sp500_data()
-    if sp500_price is None:
-        st.warning("Could not fetch S&P 500 data.")
-    else:
-        st.write(f"Current S&P 500 price: {sp500_price}")
-
-    # Fetch news sentiment
-    sentiment_score = get_news_sentiment(ticker_name)
-    st.write(f"Sentiment Score based on news: {sentiment_score}")
-
-    # Predict LTP
-    predicted_ltp = predict_ltp(ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score)
-    st.write(f"Predicted LTP for next day: {predicted_ltp}")
-
-    # Stop Loss and Max LTP
-    stop_loss = predicted_ltp * 0.98
-    max_ltp = predicted_ltp * 1.02
-    st.write(f"Stop Loss: {round(stop_loss, 2)}")
-    st.write(f"Maximum LTP: {round(max_ltp, 2)}")
-
-    # Recommendation
-    if predicted_ltp > ltp:
-        st.write("Recommendation: Profit")
-        st.write(f"Expected Profit: {round(predicted_ltp - ltp, 2)}")
-    else:
-        st.write("Recommendation: Loss")
-        st.write(f"Expected Loss: {round(ltp - predicted_ltp, 2)}")
-
-    # Auto-refresh logic
-    time.sleep(5)
-    st.experimental_rerun()
-
-# Add a button to start the auto-refresh
+# Auto-refresh implementation
 if st.button("Start Auto-Refresh"):
-    auto_refresh()
+    while True:
+        st.write("Fetching latest data...")
+
+        # Fetch current data
+        ticker_price = fetch_ticker_data(ticker_symbol)
+        if ticker_price is None:
+            st.warning(f"Could not fetch data for {ticker_name}.")
+            break
+        else:
+            st.write(f"Current price for {ticker_name}: {ticker_price}")
+
+        # Fetch India VIX
+        india_vix_ticker = yf.Ticker("^INDIAVIX")
+        try:
+            india_vix = india_vix_ticker.history(period="1d", interval="1m")["Close"].iloc[-1]
+        except:
+            india_vix = 15.0  # Default VIX value if fetching fails
+            st.write("Warning: Using default India VIX value.")
+        st.write(f"India VIX: {india_vix}")
+
+        # Fetch S&P 500 data
+        sp500_price = fetch_sp500_data()
+        if sp500_price is None:
+            st.warning("Could not fetch S&P 500 data.")
+        else:
+            st.write(f"Current S&P 500 price: {sp500_price}")
+
+        # Fetch news sentiment
+        sentiment_score = get_news_sentiment(ticker_name)
+        st.write(f"Sentiment Score based on news: {sentiment_score}")
+
+        # Predict LTP
+        predicted_ltp = predict_ltp(ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score)
+        st.write(f"Predicted LTP for next day: {predicted_ltp}")
+
+        # Stop Loss and Max LTP
+        stop_loss = predicted_ltp * 0.98
+        max_ltp = predicted_ltp * 1.02
+        st.write(f"Stop Loss: {round(stop_loss, 2)}")
+        st.write(f"Maximum LTP: {round(max_ltp, 2)}")
+
+        # Recommendation
+        if predicted_ltp > ltp:
+            st.write("Recommendation: Profit")
+            st.write(f"Expected Profit: {round(predicted_ltp - ltp, 2)}")
+        else:
+            st.write("Recommendation: Loss")
+            st.write(f"Expected Loss: {round(ltp - predicted_ltp, 2)}")
+
+        # Refresh every 5 seconds
+        time.sleep(5)
+        st.experimental_rerun()
