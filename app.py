@@ -1,15 +1,3 @@
-yfinance
-streamlit
-requests
-textblob
-torch
-transformers
-pandas
-numpy
-
-Latest below both 
-
-
 import yfinance as yf
 import streamlit as st
 import random
