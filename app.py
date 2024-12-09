@@ -7,12 +7,17 @@ from torch.nn.functional import softmax
 import requests
 from textblob import TextBlob
 from datetime import datetime, timedelta
+import time
 
 # Streamlit UI setup
 st.set_page_config(page_title="Trading Predictions", layout="wide")
 
-# Updated headline
+# Title and description
 st.title("Trading Predictions")
+st.markdown("""
+    This app predicts the next day's movement for options based on real-time market data, including sentiment analysis and machine learning predictions.
+    You can select multiple indices or stocks like **BankNifty**, **Nifty 50**, **Reliance**, and more.
+""")
 
 # Supported Tickers
 SUPPORTED_TICKERS = {
@@ -23,16 +28,17 @@ SUPPORTED_TICKERS = {
     "HDFC Bank": "HDFCBANK.NS"
 }
 
-# Sidebar for Inputs
-st.sidebar.title("Trade Settings")
-ticker_name = st.sidebar.selectbox("Select Index/Stock", list(SUPPORTED_TICKERS.keys()))
+# Dropdown for selecting ticker
+ticker_name = st.selectbox("Select Index/Stock", list(SUPPORTED_TICKERS.keys()))
 ticker_symbol = SUPPORTED_TICKERS[ticker_name]
-expiry_date = st.sidebar.date_input("Select Expiry Date", min_value=datetime.today())
-strike_price = st.sidebar.number_input("Enter Strike Price", min_value=0, value=53700)
-option_type = st.sidebar.selectbox("Select Option Type", ["Call", "Put"])
-ltp = st.sidebar.number_input("Enter Current LTP", min_value=0.0, value=765.50, step=0.05)
-risk_percentage = st.sidebar.number_input("Enter Risk Percentage (%)", min_value=0.0, value=2.0, step=0.1)
-profit_percentage = st.sidebar.number_input("Enter Profit Percentage (%)", min_value=0.0, value=5.0, step=0.1)
+
+# Input fields
+expiry_date = st.date_input("Select Expiry Date", min_value=datetime.today())
+strike_price = st.number_input("Enter Strike Price", min_value=0, value=53700)
+option_type = st.selectbox("Select Option Type", ["Call", "Put"])
+ltp = st.number_input("Enter Current LTP", min_value=0.0, value=765.50, step=0.05)
+risk_percentage = st.number_input("Enter Risk Percentage (%)", min_value=0.0, value=2.0)
+profit_percentage = st.number_input("Enter Profit Percentage (%)", min_value=0.0, value=5.0)
 
 # Load FinBERT for Sentiment Analysis
 tokenizer = BertTokenizer.from_pretrained('yiyanghkust/finbert-tone', do_lower_case=False)
@@ -70,7 +76,7 @@ def fetch_sp500_data():
         return None
 
 # Function to get news sentiment for a given index/stock
-def get_news_sentiment(ticker_name):
+def get_live_sentiment(ticker_name):
     api_key = "990f863a4f65430a99f9b0cac257f432"  # Your NewsAPI key
     url = f'https://newsapi.org/v2/everything?q={ticker_name} OR RBI OR "interest rates" OR "monetary policy" OR "banking sector" OR "GDP growth" OR "inflation" OR "earnings report" OR "trade wars" OR "interest rate hikes" OR "acquisitions" OR "merger" OR "quarterly results"&apiKey={api_key}'
 
@@ -112,57 +118,47 @@ def predict_ltp(current_ltp, ticker_price, strike_price, india_vix, sp500_price,
     predicted_ltp = current_ltp + sentiment_factor + strike_impact + sp500_impact + (current_ltp * random_factor)
     return round(predicted_ltp, 2)
 
-# Main logic for prediction
-def show_results():
-    # Fetch current data
+# Main logic for prediction with live updates
+def auto_refresh_live():
     ticker_price = fetch_ticker_data(ticker_symbol)
     if ticker_price is None:
         st.warning(f"Could not fetch data for {ticker_name}.")
     else:
         st.write(f"Current price for {ticker_name}: {ticker_price}")
 
-    # Fetch India VIX
     india_vix_ticker = yf.Ticker("^INDIAVIX")
     try:
         india_vix = india_vix_ticker.history(period="1d", interval="1m")["Close"].iloc[-1]
     except:
         india_vix = 15.0  # Default VIX value if fetching fails
-        st.write("Warning: Using default India VIX value.")
     st.write(f"India VIX: {india_vix}")
 
-    # Fetch S&P 500 data
     sp500_price = fetch_sp500_data()
     if sp500_price is None:
         st.warning("Could not fetch S&P 500 data.")
     else:
         st.write(f"Current S&P 500 price: {sp500_price}")
 
-    # Fetch news sentiment
-    sentiment_score = get_news_sentiment(ticker_name)
-    st.write(f"Sentiment Score based on news: {sentiment_score}")
+    sentiment_score = get_live_sentiment(ticker_name)
+    st.write(f"Sentiment Score based on live news: {sentiment_score}")
 
-    # Predict LTP
     predicted_ltp = predict_ltp(ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score)
     st.write(f"Predicted LTP for next day: {predicted_ltp}")
 
-    # Stop Loss and Max LTP
     stop_loss = predicted_ltp * (1 - risk_percentage / 100)
-    target_price = predicted_ltp * (1 + profit_percentage / 100)
-
+    max_ltp = predicted_ltp * (1 + profit_percentage / 100)
     st.write(f"Stop Loss: {round(stop_loss, 2)}")
-    st.write(f"Target Price: {round(target_price, 2)}")
+    st.write(f"Maximum LTP: {round(max_ltp, 2)}")
 
     # Risk-to-Reward Ratio Calculation
-    risk_to_reward = (target_price - stop_loss) / (stop_loss - predicted_ltp)
+    risk_reward_ratio = (max_ltp - predicted_ltp) / (predicted_ltp - stop_loss) if stop_loss != predicted_ltp else 0
+    st.write(f"Risk-to-Reward Ratio (RRR): {round(risk_reward_ratio, 2)}")
 
-    st.write(f"Risk-to-Reward Ratio (RRR): {round(risk_to_reward, 2)}")
-
-    # Trading Suggestion based on RRR
-    if risk_to_reward > 2:
-        st.write("**Suggestion**: Buy")
+    if risk_reward_ratio > 1:
+        st.write("Recommendation: Buy")
     else:
-        st.write("**Suggestion**: Avoid")
+        st.write("Recommendation: Avoid")
 
-# Add a button to start the auto-refresh
+# Button to start the auto-refresh with live updates
 if st.button("Start Auto-Refresh"):
-    show_results()
+    auto_refresh_live()
