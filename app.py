@@ -9,10 +9,10 @@ from textblob import TextBlob
 from datetime import datetime, timedelta
 
 # Streamlit UI setup
-st.set_page_config(page_title="Options Prediction", layout="wide")
+st.set_page_config(page_title="Trading Predictions", layout="wide")
 
-# Simple headline
-st.title("Options Trading Prediction")
+# Updated headline
+st.title("Trading Predictions")
 
 # Supported Tickers
 SUPPORTED_TICKERS = {
