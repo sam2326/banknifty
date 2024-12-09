@@ -7,7 +7,6 @@ from torch.nn.functional import softmax
 import requests
 from textblob import TextBlob
 from datetime import datetime, timedelta
-import time
 
 # Streamlit UI setup
 st.set_page_config(page_title="Trading Predictions", layout="wide")
@@ -70,7 +69,7 @@ def fetch_sp500_data():
         st.write(f"Error fetching S&P 500 data: {e}")
         return None
 
-# Function to get live news sentiment for a given index/stock
+# Function to get news sentiment for a given index/stock
 def get_news_sentiment(ticker_name):
     api_key = "990f863a4f65430a99f9b0cac257f432"  # Your NewsAPI key
     url = f'https://newsapi.org/v2/everything?q={ticker_name} OR RBI OR "interest rates" OR "monetary policy" OR "banking sector" OR "GDP growth" OR "inflation" OR "earnings report" OR "trade wars" OR "interest rate hikes" OR "acquisitions" OR "merger" OR "quarterly results"&apiKey={api_key}'
