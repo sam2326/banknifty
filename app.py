@@ -7,6 +7,7 @@ from torch.nn.functional import softmax
 import requests
 from textblob import TextBlob
 from datetime import datetime, timedelta
+import time
 
 # Streamlit UI setup
 st.set_page_config(page_title="Trading Predictions", layout="wide")
@@ -160,6 +161,10 @@ def auto_refresh():
         st.write("Suggestion: Buy")
     else:
         st.write("Suggestion: Avoid")
+
+    # Trigger auto-refresh again after 5 seconds
+    time.sleep(5)
+    st.experimental_rerun()
 
 # Add a button to start the auto-refresh
 if st.button("Start Auto-Refresh"):
