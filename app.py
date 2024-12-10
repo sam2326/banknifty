@@ -117,14 +117,16 @@ def display_sentiment_with_time():
     sentiment_score = get_news_sentiment(ticker_name)  # Fetch news sentiment
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")  # Get timestamp
     st.write(f"Sentiment Score: {sentiment_score} (Last updated: {timestamp})")
+    return sentiment_score  # Return sentiment score for use in the prediction
 
 # Main logic for prediction
 def predict():
     ticker_price, ticker_data = fetch_ticker_data(ticker_symbol)
     if ticker_price is None:
         st.warning(f"Could not fetch data for {ticker_name}.")
-    else:
-        st.write(f"Current price for {ticker_name}: {ticker_price}")
+        return
+
+    st.write(f"Current price for {ticker_name}: {ticker_price}")
 
     # Fetch India VIX
     india_vix_ticker = yf.Ticker("^INDIAVIX")
@@ -143,7 +145,7 @@ def predict():
         st.write(f"Current S&P 500 price: {sp500_price}")
 
     # Fetch news sentiment and display it with the timestamp
-    display_sentiment_with_time()
+    sentiment_score = display_sentiment_with_time()
 
     # Predict LTP
     predicted_ltp = predict_ltp(ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score)
