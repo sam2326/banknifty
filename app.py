@@ -120,10 +120,15 @@ def fetch_option_chain_data(ticker):
     try:
         ticker_obj = yf.Ticker(ticker)
         expirations = ticker_obj.options  # Get available expiration dates
-        option_data = ticker_obj.option_chain(expirations[0])  # Use the nearest expiration date
-        calls = option_data.calls
-        puts = option_data.puts
-        return calls, puts
+        if expirations:
+            expiration_date = expirations[0]  # Use the first available expiration
+            option_data = ticker_obj.option_chain(expiration_date)  # Use the nearest expiration date
+            calls = option_data.calls
+            puts = option_data.puts
+            return calls, puts
+        else:
+            st.write("No available expirations found.")
+            return None, None
     except Exception as e:
         st.write(f"Error fetching option chain data: {e}")
         return None, None
