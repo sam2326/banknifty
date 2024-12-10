@@ -58,7 +58,10 @@ def fetch_ticker_data(ticker):
     try:
         ticker_obj = yf.Ticker(ticker)
         data = ticker_obj.history(period="60d", interval="1d")  # Fetch 60 days of historical data
-        current_price = data["Close"].iloc[-1]
+        if data.empty:
+            st.warning(f"No data available for {ticker}. Please check the ticker symbol or try again later.")
+            return None, None
+        current_price = data["Close"].iloc[-1] if not data["Close"].empty else None
         return current_price, data
     except Exception as e:
         st.write(f"Error fetching data for {ticker}: {e}")
@@ -71,6 +74,9 @@ def prepare_data(data):
         data['Volatility'] = data['Close'].rolling(window=5).std()  # Rolling volatility
         data['Momentum'] = data['Close'] - data['Close'].rolling(window=5).mean()  # Momentum
         data = data.dropna()  # Drop rows with NaN values
+        if data.empty:
+            st.warning("Insufficient data to prepare features. Try again with a different ticker or timeframe.")
+            return None, None
         X = data[['Open', 'High', 'Low', 'Volatility', 'Momentum']]
         y = data['Close']
         return X, y
@@ -100,7 +106,7 @@ def fetch_sp500_data():
     try:
         sp500 = yf.Ticker("^GSPC")
         data = sp500.history(period="1d", interval="1m")
-        return data["Close"].iloc[-1]
+        return data["Close"].iloc[-1] if not data.empty else None
     except Exception as e:
         st.write(f"Error fetching S&P 500 data: {e}")
         return None
@@ -129,6 +135,9 @@ def predict():
 
     # Prepare the latest feature set for prediction
     X_latest, _ = prepare_data(ticker_data)
+    if X_latest is None or X_latest.empty:
+        st.warning("Insufficient data for prediction.")
+        return
     X_latest = X_latest.iloc[-1].values  # Get the latest row of features
 
     # Predict LTP using ML model
