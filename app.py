@@ -71,48 +71,38 @@ def fetch_sp500_data():
         st.write(f"Error fetching S&P 500 data: {e}")
         return None
 
-# Function to fetch Reddit sentiment
-def fetch_reddit_sentiment(ticker_name):
+# Function to get news sentiment for a given index/stock
+def get_news_sentiment(ticker_name):
+    api_key = "990f863a4f65430a99f9b0cac257f432"  # Your NewsAPI key
+    url = f'https://newsapi.org/v2/everything?q={ticker_name} OR RBI OR "interest rates" OR "monetary policy" OR "banking sector" OR "GDP growth" OR "inflation" OR "earnings report" OR "trade wars" OR "interest rate hikes" OR "acquisitions" OR "merger" OR "quarterly results"&apiKey={api_key}'
+
     try:
-        url = f"https://www.reddit.com/search/?q={ticker_name}&sort=new"
-        headers = {"User-Agent": "Mozilla/5.0"}
-        response = requests.get(url, headers=headers)
-        soup = BeautifulSoup(response.content, "html.parser")
-        posts = soup.find_all("h3")
+        response = requests.get(url)
+        response.raise_for_status()  # Ensure the request was successful
+        data = response.json()
 
-        headlines = [post.get_text() for post in posts if post.get_text()]
-        sentiment_score = get_sentiment_score(headlines)
-        return sentiment_score
-    except Exception as e:
-        st.write(f"Error fetching Reddit sentiment: {e}")
-        return 0
-
-# Function to fetch Stocktwits sentiment
-def fetch_stocktwits_sentiment(ticker_name):
-    try:
-        url = f"https://stocktwits.com/symbol/{ticker_name}"
-        headers = {"User-Agent": "Mozilla/5.0"}
-        response = requests.get(url, headers=headers)
-        soup = BeautifulSoup(response.content, "html.parser")
-        posts = soup.find_all("p", class_=re.compile("st_"))
-
-        headlines = [post.get_text() for post in posts if post.get_text()]
-        sentiment_score = get_sentiment_score(headlines)
-        return sentiment_score
-    except Exception as e:
-        st.write(f"Error fetching Stocktwits sentiment: {e}")
-        return 0
+        if 'articles' in data and data['articles']:
+            articles = data['articles']
+            headlines = [article['title'] for article in articles if article['title']]
+            sentiment_score = get_sentiment_score(headlines)
+            return sentiment_score
+        else:
+            st.write("Warning: No articles found.")
+            return 0
+    except requests.exceptions.RequestException as e:
+        st.write(f"Error fetching news: {e}")
+        return 0  # Return 0 if there's an error
 
 # Function to calculate sentiment score from headlines
 def get_sentiment_score(news_headlines):
     sentiment_score = 0
-    for headline in news_headlines:
-        try:
-            if isinstance(headline, str) and headline.strip():
-                sentiment_score += TextBlob(headline).sentiment.polarity
-        except Exception as e:
-            st.write(f"Error analyzing sentiment for headline: {headline}. Error: {e}")
-    
+    if news_headlines:
+        for headline in news_headlines:
+            try:
+                if isinstance(headline, str) and headline.strip():
+                    sentiment_score += TextBlob(headline).sentiment.polarity
+            except Exception as e:
+                st.write(f"Error analyzing sentiment for headline: {headline}. Error: {e}")
     return round(sentiment_score / len(news_headlines), 2) if news_headlines else 0
 
 # Function to predict LTP for the selected ticker
@@ -149,23 +139,11 @@ def predict():
         st.write(f"Current S&P 500 price: {sp500_price}")
 
     # Fetch news sentiment
-    news_sentiment = get_news_sentiment(ticker_name)
-    st.write(f"Sentiment Score based on news: {news_sentiment}")
-
-    # Fetch Reddit sentiment
-    reddit_sentiment = fetch_reddit_sentiment(ticker_name)
-    st.write(f"Sentiment Score based on Reddit: {reddit_sentiment}")
-
-    # Fetch Stocktwits sentiment
-    stocktwits_sentiment = fetch_stocktwits_sentiment(ticker_name)
-    st.write(f"Sentiment Score based on Stocktwits: {stocktwits_sentiment}")
-
-    # Combined Sentiment Score
-    combined_sentiment = round((news_sentiment + reddit_sentiment + stocktwits_sentiment) / 3, 2)
-    st.write(f"Combined Sentiment Score: {combined_sentiment}")
+    sentiment_score = get_news_sentiment(ticker_name)
+    st.write(f"Sentiment Score based on news: {sentiment_score}")
 
     # Predict LTP
-    predicted_ltp = predict_ltp(ltp, ticker_price, strike_price, india_vix, sp500_price, combined_sentiment)
+    predicted_ltp = predict_ltp(ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score)
     st.write(f"Predicted LTP for next day: {predicted_ltp}")
 
     # Stop Loss and Max LTP
