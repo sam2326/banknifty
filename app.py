@@ -118,7 +118,9 @@ def predict_ltp(current_ltp, ticker_price, strike_price, india_vix, sp500_price,
 # Function to get option chain data for today (current strike)
 def fetch_option_chain_data(ticker):
     try:
-        option_data = yf.Ticker(ticker).option_chain()
+        ticker_obj = yf.Ticker(ticker)
+        expirations = ticker_obj.options  # Get available expiration dates
+        option_data = ticker_obj.option_chain(expirations[0])  # Use the nearest expiration date
         calls = option_data.calls
         puts = option_data.puts
         return calls, puts
