@@ -6,6 +6,7 @@ from transformers import BertTokenizer, BertForSequenceClassification
 from torch.nn.functional import softmax
 import requests
 from textblob import TextBlob
+from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
 
 # Streamlit UI setup
@@ -38,15 +39,44 @@ profit_percent = st.sidebar.number_input("Enter Profit Percentage (%)", min_valu
 tokenizer = BertTokenizer.from_pretrained('yiyanghkust/finbert-tone', do_lower_case=False)
 model = BertForSequenceClassification.from_pretrained('yiyanghkust/finbert-tone')
 
-# Function to get financial sentiment using FinBERT
-def get_financial_sentiment(text):
-    inputs = tokenizer(text, return_tensors="pt", truncation=True, padding=True)
-    outputs = model(**inputs)
-    probs = softmax(outputs.logits, dim=-1)
-    sentiment = torch.argmax(probs).item()
+# Function to scrape Google News for headlines
+def scrape_google_news(query):
+    """
+    Scrapes Google News for the latest headlines based on a query.
+    Args:
+        query (str): Search query for Google News.
+    Returns:
+        list: A list of news headlines.
+    """
+    base_url = "https://news.google.com"
+    search_url = f"{base_url}/search?q={query}&hl=en-US&gl=US&ceid=US:en"
 
-    sentiment_map = {0: "Negative", 1: "Neutral", 2: "Positive"}
-    return sentiment_map[sentiment]
+    try:
+        response = requests.get(search_url)
+        response.raise_for_status()  # Ensure the request was successful
+        soup = BeautifulSoup(response.text, 'html.parser')
+
+        # Extract headlines
+        headlines = []
+        for item in soup.find_all("a", class_="DY5T1d"):
+            headlines.append(item.get_text())
+
+        return headlines[:10]  # Return the top 10 headlines
+    except Exception as e:
+        st.write(f"Error scraping Google News: {e}")
+        return []
+
+# Function to calculate sentiment score from headlines
+def get_sentiment_score(news_headlines):
+    sentiment_score = 0
+    for headline in news_headlines:
+        try:
+            if isinstance(headline, str) and headline.strip():
+                sentiment_score += TextBlob(headline).sentiment.polarity
+        except Exception as e:
+            st.write(f"Error analyzing sentiment for headline: {headline}. Error: {e}")
+    
+    return round(sentiment_score / len(news_headlines), 2) if news_headlines else 0
 
 # Function to fetch data for selected ticker
 def fetch_ticker_data(ticker):
@@ -69,40 +99,6 @@ def fetch_sp500_data():
         st.write(f"Error fetching S&P 500 data: {e}")
         return None
 
-# Function to get news sentiment for a given index/stock
-def get_news_sentiment(ticker_name):
-    api_key = "990f863a4f65430a99f9b0cac257f432"  # Your NewsAPI key
-    url = f'https://newsapi.org/v2/everything?q={ticker_name} OR RBI OR "interest rates" OR "monetary policy" OR "banking sector" OR "GDP growth" OR "inflation" OR "earnings report" OR "trade wars" OR "interest rate hikes" OR "acquisitions" OR "merger" OR "quarterly results"&apiKey={api_key}'
-
-    try:
-        response = requests.get(url)
-        response.raise_for_status()  # Ensure the request was successful
-        data = response.json()
-
-        if 'articles' in data and data['articles']:
-            articles = data['articles']
-            headlines = [article['title'] for article in articles if article['title']]
-            sentiment_score = get_sentiment_score(headlines)
-            return sentiment_score
-        else:
-            st.write("Warning: No articles found.")
-            return 0
-    except requests.exceptions.RequestException as e:
-        st.write(f"Error fetching news: {e}")
-        return 0  # Return 0 if there's an error
-
-# Function to calculate sentiment score from headlines
-def get_sentiment_score(news_headlines):
-    sentiment_score = 0
-    for headline in news_headlines:
-        try:
-            if isinstance(headline, str) and headline.strip():
-                sentiment_score += TextBlob(headline).sentiment.polarity
-        except Exception as e:
-            st.write(f"Error analyzing sentiment for headline: {headline}. Error: {e}")
-    
-    return round(sentiment_score / len(news_headlines), 2) if news_headlines else 0
-
 # Function to predict LTP for the selected ticker
 def predict_ltp(current_ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score):
     sentiment_factor = india_vix * 0.1 + sentiment_score * 0.05
@@ -117,8 +113,9 @@ def predict():
     ticker_price, ticker_data = fetch_ticker_data(ticker_symbol)
     if ticker_price is None:
         st.warning(f"Could not fetch data for {ticker_name}.")
-    else:
-        st.write(f"Current price for {ticker_name}: {ticker_price}")
+        return
+
+    st.write(f"Current price for {ticker_name}: {ticker_price}")
 
     # Fetch India VIX
     india_vix_ticker = yf.Ticker("^INDIAVIX")
@@ -136,8 +133,9 @@ def predict():
     else:
         st.write(f"Current S&P 500 price: {sp500_price}")
 
-    # Fetch news sentiment
-    sentiment_score = get_news_sentiment(ticker_name)
+    # Fetch news sentiment using scraped headlines
+    headlines = scrape_google_news(ticker_name)
+    sentiment_score = get_sentiment_score(headlines)
     st.write(f"Sentiment Score based on news: {sentiment_score}")
 
     # Predict LTP
