@@ -116,7 +116,7 @@ def get_sentiment_score(news_headlines):
 def get_twitter_sentiment(keyword):
     try:
         # Search for tweets
-        tweets = tweepy.Cursor(api.search, q=keyword, lang="en", tweet_mode="extended").items(100)
+        tweets = tweepy.Cursor(api.search_tweets, q=keyword, lang="en", tweet_mode="extended").items(100)
         tweet_list = [tweet.full_text for tweet in tweets]
         sentiment_score = 0
         for tweet in tweet_list:
