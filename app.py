@@ -34,6 +34,9 @@ ltp = st.sidebar.number_input("Enter Current LTP", min_value=0.0, value=765.50, 
 risk_percent = st.sidebar.number_input("Enter Risk Percentage (%)", min_value=0.0, max_value=100.0, value=1.0, step=0.1)
 profit_percent = st.sidebar.number_input("Enter Profit Percentage (%)", min_value=0.0, max_value=100.0, value=5.0, step=0.1)
 
+# Option Chain Analysis inputs
+option_chain_expiry = st.sidebar.date_input("Option Chain Expiry Date", min_value=datetime.today())
+
 # Load FinBERT for Sentiment Analysis
 tokenizer = BertTokenizer.from_pretrained('yiyanghkust/finbert-tone', do_lower_case=False)
 model = BertForSequenceClassification.from_pretrained('yiyanghkust/finbert-tone')
@@ -105,17 +108,23 @@ def get_sentiment_score(news_headlines):
 
 # Function to predict LTP for the selected ticker
 def predict_ltp(current_ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score):
-    if current_ltp is None or ticker_price is None or strike_price is None or india_vix is None or sp500_price is None or sentiment_score is None:
-        st.error("Error: One or more required parameters are missing or invalid.")
-        return None
-    
     sentiment_factor = india_vix * 0.1 + sentiment_score * 0.05
     strike_impact = (strike_price - ticker_price) * (0.01 if strike_price < ticker_price else -0.01)
     sp500_impact = sp500_price * 0.005
     random_factor = random.uniform(-0.01, 0.02)
-    
     predicted_ltp = current_ltp + sentiment_factor + strike_impact + sp500_impact + (current_ltp * random_factor)
     return round(predicted_ltp, 2)
+
+# Function to get option chain data for today (current strike)
+def fetch_option_chain_data(ticker):
+    try:
+        option_data = yf.Ticker(ticker).option_chain()
+        calls = option_data.calls
+        puts = option_data.puts
+        return calls, puts
+    except Exception as e:
+        st.write(f"Error fetching option chain data: {e}")
+        return None, None
 
 # Main logic for prediction
 def predict():
@@ -146,17 +155,8 @@ def predict():
     sentiment_score = get_news_sentiment(ticker_name)
     st.write(f"Sentiment Score based on news: {sentiment_score}")
 
-    # Validate inputs before prediction
-    if ltp is None or strike_price is None:
-        st.error("LTP and Strike Price must be provided.")
-        return
-
     # Predict LTP
     predicted_ltp = predict_ltp(ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score)
-    if predicted_ltp is None:
-        st.error("Error: Could not calculate predicted LTP.")
-        return
-
     st.write(f"Predicted LTP for next day: {predicted_ltp}")
 
     # Stop Loss and Max LTP
@@ -176,6 +176,23 @@ def predict():
     else:
         st.write("Suggestion: Avoid")
 
+# Function to perform option chain analysis
+def option_chain_analysis():
+    st.write("Fetching Option Chain Data for selected strike price...")
+    calls, puts = fetch_option_chain_data(ticker_symbol)
+    
+    if calls is not None and puts is not None:
+        st.write("Calls data:")
+        st.dataframe(calls)
+        st.write("Puts data:")
+        st.dataframe(puts)
+    else:
+        st.write("Error fetching option chain data.")
+
 # Add a button to trigger prediction manually
 if st.button("Get Prediction"):
     predict()
+
+# Add a button to trigger option chain analysis manually
+if st.button("Analyze Option Chain"):
+    option_chain_analysis()
