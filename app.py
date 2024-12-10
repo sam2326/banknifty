@@ -112,6 +112,29 @@ def predict_ltp(current_ltp, ticker_price, strike_price, india_vix, sp500_price,
     predicted_ltp = current_ltp + sentiment_factor + strike_impact + sp500_impact + (current_ltp * random_factor)
     return round(predicted_ltp, 2)
 
+# Option Chain Analysis: Fetching data from Yahoo Finance
+def fetch_option_chain(ticker_symbol, strike_price, expiry_date):
+    try:
+        ticker_obj = yf.Ticker(ticker_symbol)
+        option_expirations = ticker_obj.options
+        if str(expiry_date) not in option_expirations:
+            st.write(f"Error: Expiry date {expiry_date} is not available for the selected ticker.")
+            return None
+
+        options_chain = ticker_obj.option_chain(str(expiry_date))
+        calls = options_chain.calls
+        puts = options_chain.puts
+
+        # Filter options for the specified strike price
+        calls_filtered = calls[calls['strike'] == strike_price]
+        puts_filtered = puts[puts['strike'] == strike_price]
+        
+        return calls_filtered, puts_filtered
+
+    except Exception as e:
+        st.write(f"Error fetching option chain data: {e}")
+        return None, None
+
 # Main logic for prediction
 def predict():
     ticker_price, ticker_data = fetch_ticker_data(ticker_symbol)
@@ -161,7 +184,21 @@ def predict():
     else:
         st.write("Suggestion: Avoid")
 
+# Option Chain Analysis
+def option_chain_analysis():
+    st.write("Fetching Option Chain Data for selected strike price...")
+    calls, puts = fetch_option_chain(ticker_symbol, strike_price, expiry_date)
+    
+    if calls is not None and puts is not None:
+        st.write("Calls Data:")
+        st.dataframe(calls[['strike', 'lastPrice', 'openInterest', 'changeinOpenInterest', 'impliedVolatility']])
+        st.write("Puts Data:")
+        st.dataframe(puts[['strike', 'lastPrice', 'openInterest', 'changeinOpenInterest', 'impliedVolatility']])
+
 # Add a button to trigger prediction manually
 if st.button("Get Prediction"):
     predict()
 
+# Add a button to fetch option chain data
+if st.button("Get Option Chain Data"):
+    option_chain_analysis()
