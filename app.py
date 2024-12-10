@@ -2,7 +2,7 @@ import yfinance as yf
 import streamlit as st
 import random
 import torch
-from transformers import BertTokenizer, BertForSequenceClassification
+from transformers import BertTokenizer, BertForSequenceClassification, RobertaTokenizer, RobertaForSequenceClassification
 from torch.nn.functional import softmax
 import requests
 from textblob import TextBlob
@@ -34,46 +34,20 @@ ltp = st.sidebar.number_input("Enter Current LTP", min_value=0.0, value=765.50, 
 risk_percent = st.sidebar.number_input("Enter Risk Percentage (%)", min_value=0.0, max_value=100.0, value=1.0, step=0.1)
 profit_percent = st.sidebar.number_input("Enter Profit Percentage (%)", min_value=0.0, max_value=100.0, value=5.0, step=0.1)
 
-# Load FinBERT for Sentiment Analysis
-tokenizer = BertTokenizer.from_pretrained('yiyanghkust/finbert-tone', do_lower_case=False)
-model = BertForSequenceClassification.from_pretrained('yiyanghkust/finbert-tone')
+# Load FinBERT for Sentiment Analysis (Financial Sentiment)
+tokenizer_finbert = BertTokenizer.from_pretrained('yiyanghkust/finbert-tone', do_lower_case=False)
+model_finbert = BertForSequenceClassification.from_pretrained('yiyanghkust/finbert-tone')
 
-# Function to get financial sentiment using FinBERT
-def get_financial_sentiment(text):
-    inputs = tokenizer(text, return_tensors="pt", truncation=True, padding=True)
-    outputs = model(**inputs)
-    probs = softmax(outputs.logits, dim=-1)
-    sentiment = torch.argmax(probs).item()
+# Load RoBERTa for Sentiment Analysis (General Sentiment)
+tokenizer_roberta = RobertaTokenizer.from_pretrained('roberta-base')
+model_roberta = RobertaForSequenceClassification.from_pretrained('roberta-base')
 
-    sentiment_map = {0: "Negative", 1: "Neutral", 2: "Positive"}
-    return sentiment_map[sentiment]
-
-# Function to fetch data for selected ticker
-def fetch_ticker_data(ticker):
-    try:
-        ticker_obj = yf.Ticker(ticker)
-        data = ticker_obj.history(period="1d", interval="1m")
-        current_price = data["Close"].iloc[-1]
-        return current_price, data
-    except Exception as e:
-        st.write(f"Error fetching data for {ticker}: {e}")
-        return None, None
-
-# Function to fetch S&P 500 data
-def fetch_sp500_data():
-    try:
-        sp500 = yf.Ticker("^GSPC")
-        data = sp500.history(period="1d", interval="1m")
-        return data["Close"].iloc[-1]
-    except Exception as e:
-        st.write(f"Error fetching S&P 500 data: {e}")
-        return None
+# Your NewsAPI key (already integrated)
+api_key = "990f863a4f65430a99f9b0cac257f432"
 
 # Function to get news sentiment for a given index/stock
 def get_news_sentiment(ticker_name):
-    api_key = "990f863a4f65430a99f9b0cac257f432"  # Your NewsAPI key
     url = f'https://newsapi.org/v2/everything?q={ticker_name} OR RBI OR "interest rates" OR "monetary policy" OR "banking sector" OR "GDP growth" OR "inflation" OR "earnings report" OR "trade wars" OR "interest rate hikes" OR "acquisitions" OR "merger" OR "quarterly results"&apiKey={api_key}'
-
     try:
         response = requests.get(url)
         response.raise_for_status()  # Ensure the request was successful
@@ -103,6 +77,54 @@ def get_sentiment_score(news_headlines):
     
     return round(sentiment_score / len(news_headlines), 2) if news_headlines else 0
 
+# Function to get financial sentiment using FinBERT
+def get_financial_sentiment(text):
+    inputs = tokenizer_finbert(text, return_tensors="pt", truncation=True, padding=True)
+    outputs = model_finbert(**inputs)
+    probs = softmax(outputs.logits, dim=-1)
+    sentiment = torch.argmax(probs).item()
+    sentiment_map = {0: "Negative", 1: "Neutral", 2: "Positive"}
+    return sentiment_map[sentiment]
+
+# Function to get general sentiment using RoBERTa
+def get_general_sentiment(text):
+    inputs = tokenizer_roberta(text, return_tensors="pt", truncation=True, padding=True)
+    outputs = model_roberta(**inputs)
+    probs = softmax(outputs.logits, dim=-1)
+    sentiment = torch.argmax(probs).item()
+    sentiment_map = {0: "Negative", 1: "Neutral", 2: "Positive"}
+    return sentiment_map[sentiment]
+
+# Function to get combined sentiment score from FinBERT and RoBERTa
+def get_combined_sentiment(text):
+    financial_sentiment = get_financial_sentiment(text)
+    general_sentiment = get_general_sentiment(text)
+    
+    # Combine the sentiment from both models
+    combined_score = (financial_sentiment + general_sentiment) / 2
+    return combined_score
+
+# Function to fetch data for selected ticker
+def fetch_ticker_data(ticker):
+    try:
+        ticker_obj = yf.Ticker(ticker)
+        data = ticker_obj.history(period="1d", interval="1m")
+        current_price = data["Close"].iloc[-1]
+        return current_price, data
+    except Exception as e:
+        st.write(f"Error fetching data for {ticker}: {e}")
+        return None, None
+
+# Function to fetch S&P 500 data
+def fetch_sp500_data():
+    try:
+        sp500 = yf.Ticker("^GSPC")
+        data = sp500.history(period="1d", interval="1m")
+        return data["Close"].iloc[-1]
+    except Exception as e:
+        st.write(f"Error fetching S&P 500 data: {e}")
+        return None
+
 # Function to predict LTP for the selected ticker
 def predict_ltp(current_ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score):
     sentiment_factor = india_vix * 0.1 + sentiment_score * 0.05
@@ -112,21 +134,13 @@ def predict_ltp(current_ltp, ticker_price, strike_price, india_vix, sp500_price,
     predicted_ltp = current_ltp + sentiment_factor + strike_impact + sp500_impact + (current_ltp * random_factor)
     return round(predicted_ltp, 2)
 
-# Function to display sentiment score with timestamp
-def display_sentiment_with_time():
-    sentiment_score = get_news_sentiment(ticker_name)  # Fetch news sentiment
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")  # Get timestamp
-    st.write(f"Sentiment Score: {sentiment_score} (Last updated: {timestamp})")
-    return sentiment_score  # Return sentiment score for use in the prediction
-
 # Main logic for prediction
 def predict():
     ticker_price, ticker_data = fetch_ticker_data(ticker_symbol)
     if ticker_price is None:
         st.warning(f"Could not fetch data for {ticker_name}.")
-        return
-
-    st.write(f"Current price for {ticker_name}: {ticker_price}")
+    else:
+        st.write(f"Current price for {ticker_name}: {ticker_price}")
 
     # Fetch India VIX
     india_vix_ticker = yf.Ticker("^INDIAVIX")
@@ -144,11 +158,12 @@ def predict():
     else:
         st.write(f"Current S&P 500 price: {sp500_price}")
 
-    # Fetch news sentiment and display it with the timestamp
-    sentiment_score = display_sentiment_with_time()
+    # Fetch combined sentiment from both models (FinBERT and RoBERTa)
+    combined_sentiment_score = get_combined_sentiment(ticker_name)
+    st.write(f"Combined Sentiment Score based on news: {combined_sentiment_score}")
 
     # Predict LTP
-    predicted_ltp = predict_ltp(ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score)
+    predicted_ltp = predict_ltp(ltp, ticker_price, strike_price, india_vix, sp500_price, combined_sentiment_score)
     st.write(f"Predicted LTP for next day: {predicted_ltp}")
 
     # Stop Loss and Max LTP
