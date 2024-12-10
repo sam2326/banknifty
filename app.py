@@ -112,23 +112,16 @@ def predict_ltp(current_ltp, ticker_price, strike_price, india_vix, sp500_price,
     predicted_ltp = current_ltp + sentiment_factor + strike_impact + sp500_impact + (current_ltp * random_factor)
     return round(predicted_ltp, 2)
 
-# Fetch Option Chain Data from Yahoo Finance (simplified for implementation)
-def fetch_option_chain(ticker_symbol, strike_price, expiry_date):
-    try:
-        ticker_obj = yf.Ticker(ticker_symbol)
-        options_chain = ticker_obj.option_chain(expiry_date)
-        calls = options_chain.calls
-        puts = options_chain.puts
+# Function to suggest strikes based on the current LTP and market trend
+def suggest_strikes(current_price):
+    # ATM Strike
+    atm_strike = round(current_price / 100) * 100
 
-        # Filter options for the specified strike price
-        calls_filtered = calls[calls['strike'] == strike_price]
-        puts_filtered = puts[puts['strike'] == strike_price]
-        
-        return calls_filtered, puts_filtered
+    # OTM Call and Put strikes (100 points above and below ATM)
+    otm_call = atm_strike + 100
+    otm_put = atm_strike - 100
 
-    except Exception as e:
-        st.write(f"Error fetching option chain data: {e}")
-        return None, None
+    return atm_strike, otm_call, otm_put
 
 # Main logic for prediction
 def predict():
@@ -179,21 +172,12 @@ def predict():
     else:
         st.write("Suggestion: Avoid")
 
-# Option Chain Analysis
-def option_chain_analysis():
-    st.write("Fetching Option Chain Data for selected strike price...")
-    calls, puts = fetch_option_chain(ticker_symbol, strike_price, expiry_date)
-    
-    if calls is not None and puts is not None:
-        st.write("Calls Data:")
-        st.dataframe(calls[['strike', 'lastPrice', 'openInterest', 'changeinOpenInterest', 'impliedVolatility']])
-        st.write("Puts Data:")
-        st.dataframe(puts[['strike', 'lastPrice', 'openInterest', 'changeinOpenInterest', 'impliedVolatility']])
+    # Suggest strikes for intraday trading
+    atm_strike, otm_call, otm_put = suggest_strikes(ticker_price)
+    st.write(f"Suggested ATM Strike: {atm_strike}")
+    st.write(f"Suggested OTM Call Strike: {otm_call}")
+    st.write(f"Suggested OTM Put Strike: {otm_put}")
 
 # Add a button to trigger prediction manually
 if st.button("Get Prediction"):
     predict()
-
-# Add a button to fetch option chain data
-if st.button("Get Option Chain Data"):
-    option_chain_analysis()
