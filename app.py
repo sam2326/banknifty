@@ -5,9 +5,9 @@ import torch
 from transformers import BertTokenizer, BertForSequenceClassification
 from torch.nn.functional import softmax
 import requests
-from textblob import TextBlob
-from datetime import datetime, timedelta
 import pandas as pd
+from textblob import TextBlob
+from datetime import datetime
 
 # Streamlit UI setup
 st.set_page_config(page_title="Trading Predictions", layout="wide")
@@ -73,11 +73,11 @@ def fetch_sp500_data():
 # Function to get news sentiment for a given index/stock
 def get_news_sentiment(ticker_name):
     api_key = "990f863a4f65430a99f9b0cac257f432"  # Your NewsAPI key
-    url = f'https://newsapi.org/v2/everything?q={ticker_name} OR RBI OR "interest rates" OR "monetary policy" OR "banking sector" OR "GDP growth" OR "inflation" OR "earnings report" OR "trade wars" OR "interest rate hikes" OR "acquisitions" OR "merger" OR "quarterly results"&apiKey={api_key}'
+    url = f'https://newsapi.org/v2/everything?q={ticker_name}&apiKey={api_key}'
 
     try:
         response = requests.get(url)
-        response.raise_for_status()  # Ensure the request was successful
+        response.raise_for_status()
         data = response.json()
 
         if 'articles' in data and data['articles']:
@@ -104,52 +104,51 @@ def get_sentiment_score(news_headlines):
     
     return round(sentiment_score / len(news_headlines), 2) if news_headlines else 0
 
-# Function to predict LTP for the selected ticker
-def predict_ltp(current_ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score):
-    sentiment_factor = india_vix * 0.1 + sentiment_score * 0.05
-    strike_impact = (strike_price - ticker_price) * (0.01 if strike_price < ticker_price else -0.01)
-    sp500_impact = sp500_price * 0.005
-    random_factor = random.uniform(-0.01, 0.02)
-    predicted_ltp = current_ltp + sentiment_factor + strike_impact + sp500_impact + (current_ltp * random_factor)
-    return round(predicted_ltp, 2)
-
-# Function to fetch Option Chain data from NSE (scraping method)
-def fetch_option_chain(ticker, strike_price):
+# Function to fetch Option Chain data
+def fetch_option_chain(ticker):
     url = f'https://www.nseindia.com/api/option-chain-indices?symbol={ticker}'
 
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36',
-        'Accept-Language': 'en-US,en;q=0.5'
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Referer': 'https://www.nseindia.com/',
+        'Cache-Control': 'no-cache'
     }
 
-    try:
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()  # Ensure the request was successful
+    session = requests.Session()
+    session.headers.update(headers)
 
+    try:
+        # Fetch initial cookies
+        session.get("https://www.nseindia.com/")
+        
+        # Get option chain data
+        response = session.get(url)
+        response.raise_for_status()
         data = response.json()
+
+        # Extract option chain data
         option_data = data.get('records', {}).get('data', [])
 
-        calls = []
-        puts = []
-        for item in option_data:
-            if 'CE' in item:
-                calls.append(item['CE'])
-            if 'PE' in item:
-                puts.append(item['PE'])
+        # Separate calls and puts
+        calls = [item['CE'] for item in option_data if 'CE' in item]
+        puts = [item['PE'] for item in option_data if 'PE' in item]
 
-        # Processing the option chain data
-        calls_df = pd.DataFrame(calls)
-        puts_df = pd.DataFrame(puts)
+        # Create DataFrames for Calls and Puts
+        calls_df = pd.DataFrame(calls)[['strikePrice', 'openInterest', 'changeinOpenInterest', 'lastPrice']]
+        puts_df = pd.DataFrame(puts)[['strikePrice', 'openInterest', 'changeinOpenInterest', 'lastPrice']]
 
-        option_df = pd.concat([calls_df[['strikePrice', 'openInterest', 'changeinOpenInterest', 'lastPrice']], 
-                               puts_df[['strikePrice', 'openInterest', 'changeinOpenInterest', 'lastPrice']]], 
-                              ignore_index=True)
+        # Combine Calls and Puts
+        calls_df['Type'] = 'Call'
+        puts_df['Type'] = 'Put'
+        option_chain = pd.concat([calls_df, puts_df])
 
-        option_df.columns = ['Strike Price', 'Open Interest', 'Change in Open Interest', 'Last Price']
-        return option_df
+        return option_chain
 
     except requests.exceptions.RequestException as e:
-        st.write(f"Error fetching option chain data: {e}")
+        st.error(f"Error fetching option chain data: {e}")
         return None
 
 # Main logic for prediction
@@ -157,8 +156,9 @@ def predict():
     ticker_price, ticker_data = fetch_ticker_data(ticker_symbol)
     if ticker_price is None:
         st.warning(f"Could not fetch data for {ticker_name}.")
-    else:
-        st.write(f"Current price for {ticker_name}: {ticker_price}")
+        return
+
+    st.write(f"Current price for {ticker_name}: {ticker_price}")
 
     # Fetch India VIX
     india_vix_ticker = yf.Ticker("^INDIAVIX")
@@ -180,38 +180,29 @@ def predict():
     sentiment_score = get_news_sentiment(ticker_name)
     st.write(f"Sentiment Score based on news: {sentiment_score}")
 
-    # Predict LTP
-    predicted_ltp = predict_ltp(ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score)
-    st.write(f"Predicted LTP for next day: {predicted_ltp}")
-
     # Stop Loss and Max LTP
+    predicted_ltp = round(random.uniform(0.9, 1.1) * ltp, 2)
     stop_loss = round(predicted_ltp * (1 - (risk_percent / 100)), 2)
     max_ltp = round(predicted_ltp * (1 + (profit_percent / 100)), 2)
 
+    st.write(f"Predicted LTP for next day: {predicted_ltp}")
     st.write(f"Stop Loss: {stop_loss}")
     st.write(f"Target Price: {max_ltp}")
 
-    # Risk-to-Reward Ratio (RRR)
-    rrr = round((max_ltp - predicted_ltp) / (predicted_ltp - stop_loss), 2) if stop_loss and max_ltp else None
-    st.write(f"Risk-to-Reward Ratio (RRR): {rrr}")
-
-    # Trading suggestion
-    if rrr and rrr > 1:
-        st.write("Suggestion: Buy")
-    else:
-        st.write("Suggestion: Avoid")
-
-# Function for Option Chain Analysis
+# Option Chain Analysis
 def option_chain_analysis():
-    option_chain_data = fetch_option_chain(ticker_symbol, strike_price)
-    if option_chain_data is not None:
+    st.write("Fetching Option Chain Data...")
+    option_chain_data = fetch_option_chain(ticker_symbol)
+
+    if option_chain_data is not None and not option_chain_data.empty:
         st.write("Option Chain Data:")
         st.dataframe(option_chain_data)
+    else:
+        st.error("No option chain data available.")
 
-# Add a button to trigger prediction manually
+# Add buttons to trigger actions
 if st.button("Get Prediction"):
     predict()
 
-# Add a button to trigger option chain analysis manually
 if st.button("Get Option Chain Data"):
     option_chain_analysis()
