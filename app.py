@@ -2,12 +2,11 @@ import yfinance as yf
 import streamlit as st
 import random
 import torch
-from transformers import BertTokenizer, BertForSequenceClassification
+from transformers import BertTokenizer, BertForSequenceClassification, RobertaTokenizer, RobertaForSequenceClassification
 from torch.nn.functional import softmax
 import requests
 from textblob import TextBlob
 from datetime import datetime, timedelta
-import pandas as pd
 
 # Streamlit UI setup
 st.set_page_config(page_title="Trading Predictions", layout="wide")
@@ -35,14 +34,29 @@ ltp = st.sidebar.number_input("Enter Current LTP", min_value=0.0, value=765.50, 
 risk_percent = st.sidebar.number_input("Enter Risk Percentage (%)", min_value=0.0, max_value=100.0, value=1.0, step=0.1)
 profit_percent = st.sidebar.number_input("Enter Profit Percentage (%)", min_value=0.0, max_value=100.0, value=5.0, step=0.1)
 
-# Load FinBERT for Sentiment Analysis
-tokenizer = BertTokenizer.from_pretrained('yiyanghkust/finbert-tone', do_lower_case=False)
-model = BertForSequenceClassification.from_pretrained('yiyanghkust/finbert-tone')
+# Load FinBERT and RoBERTa for Sentiment Analysis
+finbert_tokenizer = BertTokenizer.from_pretrained('yiyanghkust/finbert-tone', do_lower_case=False)
+finbert_model = BertForSequenceClassification.from_pretrained('yiyanghkust/finbert-tone')
+
+roberta_tokenizer = RobertaTokenizer.from_pretrained('roberta-base')
+roberta_model = RobertaForSequenceClassification.from_pretrained('roberta-base')
+
+# Your NewsAPI key (provided by you)
+NEWS_API_KEY = "990f863a4f65430a99f9b0cac257f432"
 
 # Function to get financial sentiment using FinBERT
 def get_financial_sentiment(text):
-    inputs = tokenizer(text, return_tensors="pt", truncation=True, padding=True)
-    outputs = model(**inputs)
+    inputs = finbert_tokenizer(text, return_tensors="pt", truncation=True, padding=True)
+    outputs = finbert_model(**inputs)
+    probs = softmax(outputs.logits, dim=-1)
+    sentiment = torch.argmax(probs).item()
+    sentiment_map = {0: "Negative", 1: "Neutral", 2: "Positive"}
+    return sentiment_map[sentiment]
+
+# Function to get sentiment using RoBERTa
+def get_roberta_sentiment(text):
+    inputs = roberta_tokenizer(text, return_tensors="pt", truncation=True, padding=True)
+    outputs = roberta_model(**inputs)
     probs = softmax(outputs.logits, dim=-1)
     sentiment = torch.argmax(probs).item()
     sentiment_map = {0: "Negative", 1: "Neutral", 2: "Positive"}
@@ -69,10 +83,9 @@ def fetch_sp500_data():
         st.write(f"Error fetching S&P 500 data: {e}")
         return None
 
-# Function to get news sentiment for a given index/stock
+# Function to get news sentiment for a given index/stock using your provided NewsAPI key
 def get_news_sentiment(ticker_name):
-    api_key = "990f863a4f65430a99f9b0cac257f432"  # Your NewsAPI key
-    url = f'https://newsapi.org/v2/everything?q={ticker_name} OR RBI OR "interest rates" OR "monetary policy" OR "banking sector" OR "GDP growth" OR "inflation" OR "earnings report" OR "trade wars" OR "interest rate hikes" OR "acquisitions" OR "merger" OR "quarterly results"&apiKey={api_key}'
+    url = f'https://newsapi.org/v2/everything?q={ticker_name} OR RBI OR "interest rates" OR "monetary policy" OR "banking sector" OR "GDP growth" OR "inflation" OR "earnings report" OR "trade wars" OR "interest rate hikes" OR "acquisitions" OR "merger" OR "quarterly results"&apiKey={NEWS_API_KEY}'
 
     try:
         response = requests.get(url)
@@ -83,13 +96,14 @@ def get_news_sentiment(ticker_name):
             articles = data['articles']
             headlines = [article['title'] for article in articles if article['title']]
             sentiment_score = get_sentiment_score(headlines)
-            return sentiment_score, datetime.now()  # Returning timestamp as well
+            news_time = data['articles'][0]['publishedAt']
+            return sentiment_score, news_time
         else:
             st.write("Warning: No articles found.")
-            return 0, datetime.now()
+            return 0, None
     except requests.exceptions.RequestException as e:
         st.write(f"Error fetching news: {e}")
-        return 0, datetime.now()
+        return 0, None  # Return 0 if there's an error
 
 # Function to calculate sentiment score from headlines
 def get_sentiment_score(news_headlines):
@@ -105,7 +119,7 @@ def get_sentiment_score(news_headlines):
 
 # Function to predict LTP for the selected ticker
 def predict_ltp(current_ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score):
-    sentiment_factor = india_vix * 0.1 + sentiment_score * 0.1  # Increased weight for sentiment score
+    sentiment_factor = india_vix * 0.1 + sentiment_score * 0.05
     strike_impact = (strike_price - ticker_price) * (0.01 if strike_price < ticker_price else -0.01)
     sp500_impact = sp500_price * 0.005
     random_factor = random.uniform(-0.01, 0.02)
@@ -136,13 +150,22 @@ def predict():
     else:
         st.write(f"Current S&P 500 price: {sp500_price}")
 
-    # Fetch news sentiment and timestamp
-    sentiment_score, timestamp = get_news_sentiment(ticker_name)
+    # Fetch news sentiment using both FinBERT and RoBERTa
+    finbert_sentiment_score = get_financial_sentiment(ticker_name)
+    roberta_sentiment_score = get_roberta_sentiment(ticker_name)
+    combined_sentiment_score = (finbert_sentiment_score + roberta_sentiment_score) / 2  # Combine both sentiment scores
+
+    st.write(f"FinBERT Sentiment: {finbert_sentiment_score}")
+    st.write(f"RoBERTa Sentiment: {roberta_sentiment_score}")
+    st.write(f"Combined Sentiment Score based on news: {combined_sentiment_score}")
+
+    sentiment_score, news_time = get_news_sentiment(ticker_name)
     st.write(f"Sentiment Score based on news: {sentiment_score}")
-    st.write(f"News fetched at: {timestamp}")
+    if news_time:
+        st.write(f"News fetched at: {news_time}")
 
     # Predict LTP
-    predicted_ltp = predict_ltp(ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score)
+    predicted_ltp = predict_ltp(ltp, ticker_price, strike_price, india_vix, sp500_price, combined_sentiment_score)
     st.write(f"Predicted LTP for next day: {predicted_ltp}")
 
     # Stop Loss and Max LTP
