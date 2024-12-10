@@ -202,4 +202,9 @@ if st.button("Get Prediction"):
 
 # Add option chain analysis button
 if st.button("Get Option Chain Analysis"):
-    option_chain_analysis()
+    calls, puts = fetch_option_chain(ticker_symbol, expiry_date)
+    if calls is not None and puts is not None:
+        st.write(f"Available Call options for {ticker_name} expiry {expiry_date}:")
+        st.write(calls)
+        st.write(f"Available Put options for {ticker_name} expiry {expiry_date}:")
+        st.write(puts)
