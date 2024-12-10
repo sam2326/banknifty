@@ -7,6 +7,10 @@ from torch.nn.functional import softmax
 import requests
 from textblob import TextBlob
 from datetime import datetime, timedelta
+import pandas as pd
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_squared_error
 
 # Streamlit UI setup
 st.set_page_config(page_title="Trading Predictions", layout="wide")
@@ -52,12 +56,11 @@ def get_financial_sentiment(text):
 def fetch_ticker_data(ticker):
     try:
         ticker_obj = yf.Ticker(ticker)
-        data = ticker_obj.history(period="1d", interval="1m")
-        current_price = data["Close"].iloc[-1]
-        return current_price, data
+        data = ticker_obj.history(period="1y", interval="1d")  # Fetch 1 year of data
+        return data
     except Exception as e:
         st.write(f"Error fetching data for {ticker}: {e}")
-        return None, None
+        return None
 
 # Function to fetch S&P 500 data
 def fetch_sp500_data():
@@ -103,80 +106,70 @@ def get_sentiment_score(news_headlines):
     
     return round(sentiment_score / len(news_headlines), 2) if news_headlines else 0
 
-# Function to predict LTP for the selected ticker
-def predict_ltp(current_ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score):
-    sentiment_factor = india_vix * 0.1 + sentiment_score * 0.05
-    strike_impact = (strike_price - ticker_price) * (0.01 if strike_price < ticker_price else -0.01)
-    sp500_impact = sp500_price * 0.005
-    random_factor = random.uniform(-0.01, 0.02)
-    predicted_ltp = current_ltp + sentiment_factor + strike_impact + sp500_impact + (current_ltp * random_factor)
+# Train a machine learning model (RandomForestRegressor)
+def train_ml_model(data):
+    data['Date'] = data.index
+    data['Date'] = pd.to_datetime(data['Date'])
+    data['Year'] = data['Date'].dt.year
+    data['Month'] = data['Date'].dt.month
+    data['Day'] = data['Date'].dt.day
+    data['Weekday'] = data['Date'].dt.weekday
+    
+    # We can add more features like moving averages, RSI, etc.
+    data['Moving_Avg'] = data['Close'].rolling(window=5).mean()
+    data['Volatility'] = data['Close'].pct_change()
+    
+    # Define X and y
+    X = data[['Year', 'Month', 'Day', 'Weekday', 'Moving_Avg', 'Volatility']].dropna()
+    y = data['Close'].shift(-1).dropna()  # Target: Next day's closing price
+    
+    # Train/test split
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    
+    model = RandomForestRegressor(n_estimators=100, random_state=42)
+    model.fit(X_train, y_train)
+    
+    # Test and evaluate the model
+    y_pred = model.predict(X_test)
+    rmse = mean_squared_error(y_test, y_pred, squared=False)
+    
+    st.write(f"Model Evaluation (RMSE): {rmse}")
+    
+    return model
+
+# Predict the LTP using the trained model
+def predict_ltp_ml(model, ticker_data):
+    features = ticker_data[['Year', 'Month', 'Day', 'Weekday', 'Moving_Avg', 'Volatility']].dropna().iloc[-1]
+    predicted_ltp = model.predict([features])[0]
     return round(predicted_ltp, 2)
 
-# Function to suggest strikes based on the current LTP and market trend
-def suggest_strikes(current_price):
-    # ATM Strike
-    atm_strike = round(current_price / 100) * 100
-
-    # OTM Call and Put strikes (100 points above and below ATM)
-    otm_call = atm_strike + 100
-    otm_put = atm_strike - 100
-
-    return atm_strike, otm_call, otm_put
-
-# Main logic for prediction
+# Main logic for prediction with machine learning
 def predict():
-    ticker_price, ticker_data = fetch_ticker_data(ticker_symbol)
-    if ticker_price is None:
+    ticker_data = fetch_ticker_data(ticker_symbol)
+    if ticker_data is None:
         st.warning(f"Could not fetch data for {ticker_name}.")
     else:
-        st.write(f"Current price for {ticker_name}: {ticker_price}")
+        st.write(f"Current price for {ticker_name}: {ticker_data['Close'].iloc[-1]}")
+        
+        model = train_ml_model(ticker_data)  # Train the model with historical data
+        predicted_ltp = predict_ltp_ml(model, ticker_data)  # Predict next day's LTP
+        
+        st.write(f"Predicted LTP for next day (ML Model): {predicted_ltp}")
+        
+        # Existing features for Stop Loss, Target Price, RRR, etc.
+        stop_loss = round(predicted_ltp * (1 - (risk_percent / 100)), 2)
+        max_ltp = round(predicted_ltp * (1 + (profit_percent / 100)), 2)
 
-    # Fetch India VIX
-    india_vix_ticker = yf.Ticker("^INDIAVIX")
-    try:
-        india_vix = india_vix_ticker.history(period="1d", interval="1m")["Close"].iloc[-1]
-    except:
-        india_vix = 15.0  # Default VIX value if fetching fails
-        st.write("Warning: Using default India VIX value.")
-    st.write(f"India VIX: {india_vix}")
+        st.write(f"Stop Loss: {stop_loss}")
+        st.write(f"Target Price: {max_ltp}")
 
-    # Fetch S&P 500 data
-    sp500_price = fetch_sp500_data()
-    if sp500_price is None:
-        st.warning("Could not fetch S&P 500 data.")
-    else:
-        st.write(f"Current S&P 500 price: {sp500_price}")
+        rrr = round((max_ltp - predicted_ltp) / (predicted_ltp - stop_loss), 2) if stop_loss and max_ltp else None
+        st.write(f"Risk-to-Reward Ratio (RRR): {rrr}")
 
-    # Fetch news sentiment
-    sentiment_score = get_news_sentiment(ticker_name)
-    st.write(f"Sentiment Score based on news: {sentiment_score}")
-
-    # Predict LTP
-    predicted_ltp = predict_ltp(ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score)
-    st.write(f"Predicted LTP for next day: {predicted_ltp}")
-
-    # Stop Loss and Max LTP
-    stop_loss = round(predicted_ltp * (1 - (risk_percent / 100)), 2)
-    max_ltp = round(predicted_ltp * (1 + (profit_percent / 100)), 2)
-
-    st.write(f"Stop Loss: {stop_loss}")
-    st.write(f"Target Price: {max_ltp}")
-
-    # Risk-to-Reward Ratio (RRR)
-    rrr = round((max_ltp - predicted_ltp) / (predicted_ltp - stop_loss), 2) if stop_loss and max_ltp else None
-    st.write(f"Risk-to-Reward Ratio (RRR): {rrr}")
-
-    # Trading suggestion
-    if rrr and rrr > 1:
-        st.write("Suggestion: Buy")
-    else:
-        st.write("Suggestion: Avoid")
-
-    # Suggest strikes for intraday trading
-    atm_strike, otm_call, otm_put = suggest_strikes(ticker_price)
-    st.write(f"Suggested ATM Strike: {atm_strike}")
-    st.write(f"Suggested OTM Call Strike: {otm_call}")
-    st.write(f"Suggested OTM Put Strike: {otm_put}")
+        if rrr and rrr > 1:
+            st.write("Suggestion: Buy")
+        else:
+            st.write("Suggestion: Avoid")
 
 # Add a button to trigger prediction manually
 if st.button("Get Prediction"):
