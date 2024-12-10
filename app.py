@@ -23,46 +23,11 @@ SUPPORTED_TICKERS = {
     "HDFC Bank": "HDFCBANK.NS"
 }
 
-# Function to update expiry date dynamically
-def get_expiry_dates(ticker):
-    try:
-        ticker_obj = yf.Ticker(ticker)
-        available_expirations = ticker_obj.options  # Fetch available expirations
-        return available_expirations
-    except Exception as e:
-        st.write(f"Error fetching expiry dates: {e}")
-        return []
-
-# Function to fetch Option Chain Data
-def fetch_option_chain(ticker, expiry_date):
-    try:
-        ticker_obj = yf.Ticker(ticker)
-        available_expirations = ticker_obj.options  # Fetch available expirations
-
-        if expiry_date not in available_expirations:
-            st.write(f"Expiration {expiry_date} is not available. Available expirations are: {available_expirations}")
-            return None, None  # Return None if expiration is not found
-
-        option_data = ticker_obj.option_chain(expiry_date)
-        calls = option_data.calls
-        puts = option_data.puts
-        return calls, puts
-    except Exception as e:
-        st.write(f"Error fetching option chain data for {ticker}: {e}")
-        return None, None
-
 # Sidebar for Inputs
 st.sidebar.title("User Inputs")
 ticker_name = st.sidebar.selectbox("Select Ticker", list(SUPPORTED_TICKERS.keys()))
 ticker_symbol = SUPPORTED_TICKERS[ticker_name]
-
-# Fetch available expirations dynamically
-expiry_dates = get_expiry_dates(ticker_symbol)
-if expiry_dates:
-    expiry_date = st.sidebar.selectbox("Select Expiry Date", expiry_dates)
-else:
-    expiry_date = st.sidebar.date_input("Select Expiry Date", min_value=datetime.today())
-
+expiry_date = st.sidebar.date_input("Select Expiry Date", min_value=datetime.today())
 strike_price = st.sidebar.number_input("Enter Strike Price", min_value=0, value=53700)
 option_type = st.sidebar.selectbox("Select Option Type", ["Call", "Put"])
 ltp = st.sidebar.number_input("Enter Current LTP", min_value=0.0, value=765.50, step=0.05)
@@ -138,6 +103,27 @@ def get_sentiment_score(news_headlines):
     
     return round(sentiment_score / len(news_headlines), 2) if news_headlines else 0
 
+# Function to fetch option chain data (using today's nearest expiration date)
+def fetch_option_chain(ticker):
+    try:
+        ticker_obj = yf.Ticker(ticker)
+        available_expirations = ticker_obj.options  # Fetch available expirations
+
+        if not available_expirations:
+            st.write("No available expiration dates found.")
+            return None, None
+
+        # Default to the first available expiration date
+        expiry_date = available_expirations[0]
+        option_data = ticker_obj.option_chain(expiry_date)
+        calls = option_data.calls
+        puts = option_data.puts
+        st.write(f"Fetching options data for expiry: {expiry_date}")
+        return calls, puts
+    except Exception as e:
+        st.write(f"Error fetching option chain data for {ticker}: {e}")
+        return None, None
+
 # Function to predict LTP for the selected ticker
 def predict_ltp(current_ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score):
     sentiment_factor = india_vix * 0.1 + sentiment_score * 0.05
@@ -200,11 +186,11 @@ def predict():
 if st.button("Get Prediction"):
     predict()
 
-# Add option chain analysis button
+# Option Chain Analysis
 if st.button("Get Option Chain Analysis"):
-    calls, puts = fetch_option_chain(ticker_symbol, expiry_date)
+    calls, puts = fetch_option_chain(ticker_symbol)
     if calls is not None and puts is not None:
-        st.write(f"Available Call options for {ticker_name} expiry {expiry_date}:")
+        st.write(f"Available Call options for {ticker_name}:")
         st.write(calls)
-        st.write(f"Available Put options for {ticker_name} expiry {expiry_date}:")
+        st.write(f"Available Put options for {ticker_name}:")
         st.write(puts)
