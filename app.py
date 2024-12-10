@@ -7,6 +7,7 @@ from torch.nn.functional import softmax
 import requests
 from textblob import TextBlob
 from datetime import datetime, timedelta
+import pandas as pd
 
 # Streamlit UI setup
 st.set_page_config(page_title="Trading Predictions", layout="wide")
@@ -33,9 +34,6 @@ option_type = st.sidebar.selectbox("Select Option Type", ["Call", "Put"])
 ltp = st.sidebar.number_input("Enter Current LTP", min_value=0.0, value=765.50, step=0.05)
 risk_percent = st.sidebar.number_input("Enter Risk Percentage (%)", min_value=0.0, max_value=100.0, value=1.0, step=0.1)
 profit_percent = st.sidebar.number_input("Enter Profit Percentage (%)", min_value=0.0, max_value=100.0, value=5.0, step=0.1)
-
-# Option Chain Analysis inputs
-option_chain_expiry = st.sidebar.date_input("Option Chain Expiry Date", min_value=datetime.today())
 
 # Load FinBERT for Sentiment Analysis
 tokenizer = BertTokenizer.from_pretrained('yiyanghkust/finbert-tone', do_lower_case=False)
@@ -115,32 +113,52 @@ def predict_ltp(current_ltp, ticker_price, strike_price, india_vix, sp500_price,
     predicted_ltp = current_ltp + sentiment_factor + strike_impact + sp500_impact + (current_ltp * random_factor)
     return round(predicted_ltp, 2)
 
-# Function to get option chain data for today (current strike)
-def fetch_option_chain_data(ticker):
+# Function to fetch Option Chain data from NSE (scraping method)
+def fetch_option_chain(ticker, strike_price):
+    url = f'https://www.nseindia.com/api/option-chain-indices?symbol={ticker}'
+
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36',
+        'Accept-Language': 'en-US,en;q=0.5'
+    }
+
     try:
-        ticker_obj = yf.Ticker(ticker)
-        expirations = ticker_obj.options  # Get available expiration dates
-        if expirations:
-            expiration_date = expirations[0]  # Use the first available expiration
-            option_data = ticker_obj.option_chain(expiration_date)  # Use the nearest expiration date
-            calls = option_data.calls
-            puts = option_data.puts
-            return calls, puts
-        else:
-            st.write("No available expirations found.")
-            return None, None
-    except Exception as e:
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()  # Ensure the request was successful
+
+        data = response.json()
+        option_data = data.get('records', {}).get('data', [])
+
+        calls = []
+        puts = []
+        for item in option_data:
+            if 'CE' in item:
+                calls.append(item['CE'])
+            if 'PE' in item:
+                puts.append(item['PE'])
+
+        # Processing the option chain data
+        calls_df = pd.DataFrame(calls)
+        puts_df = pd.DataFrame(puts)
+
+        option_df = pd.concat([calls_df[['strikePrice', 'openInterest', 'changeinOpenInterest', 'lastPrice']], 
+                               puts_df[['strikePrice', 'openInterest', 'changeinOpenInterest', 'lastPrice']]], 
+                              ignore_index=True)
+
+        option_df.columns = ['Strike Price', 'Open Interest', 'Change in Open Interest', 'Last Price']
+        return option_df
+
+    except requests.exceptions.RequestException as e:
         st.write(f"Error fetching option chain data: {e}")
-        return None, None
+        return None
 
 # Main logic for prediction
 def predict():
     ticker_price, ticker_data = fetch_ticker_data(ticker_symbol)
     if ticker_price is None:
         st.warning(f"Could not fetch data for {ticker_name}.")
-        return
-
-    st.write(f"Current price for {ticker_name}: {ticker_price}")
+    else:
+        st.write(f"Current price for {ticker_name}: {ticker_price}")
 
     # Fetch India VIX
     india_vix_ticker = yf.Ticker("^INDIAVIX")
@@ -155,8 +173,8 @@ def predict():
     sp500_price = fetch_sp500_data()
     if sp500_price is None:
         st.warning("Could not fetch S&P 500 data.")
-        return
-    st.write(f"Current S&P 500 price: {sp500_price}")
+    else:
+        st.write(f"Current S&P 500 price: {sp500_price}")
 
     # Fetch news sentiment
     sentiment_score = get_news_sentiment(ticker_name)
@@ -183,23 +201,17 @@ def predict():
     else:
         st.write("Suggestion: Avoid")
 
-# Function to perform option chain analysis
+# Function for Option Chain Analysis
 def option_chain_analysis():
-    st.write("Fetching Option Chain Data for selected strike price...")
-    calls, puts = fetch_option_chain_data(ticker_symbol)
-    
-    if calls is not None and puts is not None:
-        st.write("Calls data:")
-        st.dataframe(calls)
-        st.write("Puts data:")
-        st.dataframe(puts)
-    else:
-        st.write("Error fetching option chain data.")
+    option_chain_data = fetch_option_chain(ticker_symbol, strike_price)
+    if option_chain_data is not None:
+        st.write("Option Chain Data:")
+        st.dataframe(option_chain_data)
 
 # Add a button to trigger prediction manually
 if st.button("Get Prediction"):
     predict()
 
 # Add a button to trigger option chain analysis manually
-if st.button("Analyze Option Chain"):
+if st.button("Get Option Chain Data"):
     option_chain_analysis()
