@@ -27,7 +27,7 @@ SUPPORTED_TICKERS = {
 def get_expiry_dates(ticker):
     try:
         ticker_obj = yf.Ticker(ticker)
-        available_expirations = ticker_obj.options
+        available_expirations = ticker_obj.options  # Fetch available expirations
         return available_expirations
     except Exception as e:
         st.write(f"Error fetching expiry dates: {e}")
