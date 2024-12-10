@@ -103,6 +103,30 @@ def get_sentiment_score(news_headlines):
     
     return round(sentiment_score / len(news_headlines), 2) if news_headlines else 0
 
+# Function to fetch Option Chain Data
+def fetch_option_chain(ticker, expiry_date):
+    try:
+        ticker_obj = yf.Ticker(ticker)
+        option_data = ticker_obj.option_chain(expiry_date)
+        calls = option_data.calls
+        puts = option_data.puts
+        return calls, puts
+    except Exception as e:
+        st.write(f"Error fetching option chain data for {ticker}: {e}")
+        return None, None
+
+# Function to display Option Chain Analysis
+def option_chain_analysis():
+    calls, puts = fetch_option_chain(ticker_symbol, expiry_date)
+
+    if calls is None or puts is None:
+        st.write("Error fetching option chain data.")
+    else:
+        st.write("Option Chain Analysis (Call Options)")
+        st.write(calls[['strike', 'lastPrice', 'bid', 'ask', 'volume', 'openInterest']].sort_values('volume', ascending=False).head())
+        st.write("Option Chain Analysis (Put Options)")
+        st.write(puts[['strike', 'lastPrice', 'bid', 'ask', 'volume', 'openInterest']].sort_values('volume', ascending=False).head())
+
 # Function to predict LTP for the selected ticker
 def predict_ltp(current_ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score):
     sentiment_factor = india_vix * 0.1 + sentiment_score * 0.05
@@ -164,3 +188,7 @@ def predict():
 # Add a button to trigger prediction manually
 if st.button("Get Prediction"):
     predict()
+
+# Add option chain analysis button
+if st.button("Get Option Chain Analysis"):
+    option_chain_analysis()
