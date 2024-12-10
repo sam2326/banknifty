@@ -103,36 +103,6 @@ def get_sentiment_score(news_headlines):
     
     return round(sentiment_score / len(news_headlines), 2) if news_headlines else 0
 
-# Function to fetch option chain data (using today's nearest expiration date)
-def fetch_option_chain(ticker):
-    try:
-        ticker_obj = yf.Ticker(ticker)
-        available_expirations = ticker_obj.options  # Fetch available expirations
-
-        if not available_expirations:
-            st.write("No available expiration dates found.")
-            return None, None
-
-        # Default to the first available expiration date
-        expiry_date = available_expirations[0]
-        option_data = ticker_obj.option_chain(expiry_date)
-        calls = option_data.calls
-        puts = option_data.puts
-        st.write(f"Fetching options data for expiry: {expiry_date}")
-        return calls, puts
-    except Exception as e:
-        st.write(f"Error fetching option chain data for {ticker}: {e}")
-        return None, None
-
-# Function to predict LTP for the selected ticker
-def predict_ltp(current_ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score):
-    sentiment_factor = india_vix * 0.1 + sentiment_score * 0.05
-    strike_impact = (strike_price - ticker_price) * (0.01 if strike_price < ticker_price else -0.01)
-    sp500_impact = sp500_price * 0.005
-    random_factor = random.uniform(-0.01, 0.02)
-    predicted_ltp = current_ltp + sentiment_factor + strike_impact + sp500_impact + (current_ltp * random_factor)
-    return round(predicted_ltp, 2)
-
 # Main logic for prediction
 def predict():
     ticker_price, ticker_data = fetch_ticker_data(ticker_symbol)
@@ -182,15 +152,19 @@ def predict():
     else:
         st.write("Suggestion: Avoid")
 
-# Add a button to trigger prediction manually
-if st.button("Get Prediction"):
-    predict()
-
 # Option Chain Analysis
-if st.button("Get Option Chain Analysis"):
+def option_chain_analysis():
     calls, puts = fetch_option_chain(ticker_symbol)
     if calls is not None and puts is not None:
         st.write(f"Available Call options for {ticker_name}:")
         st.write(calls)
         st.write(f"Available Put options for {ticker_name}:")
         st.write(puts)
+
+# Add a button to trigger prediction manually
+if st.button("Get Prediction"):
+    predict()
+
+# Add a button for option chain analysis
+if st.button("Get Option Chain Analysis"):
+    option_chain_analysis()
