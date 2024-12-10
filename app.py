@@ -112,16 +112,11 @@ def predict_ltp(current_ltp, ticker_price, strike_price, india_vix, sp500_price,
     predicted_ltp = current_ltp + sentiment_factor + strike_impact + sp500_impact + (current_ltp * random_factor)
     return round(predicted_ltp, 2)
 
-# Option Chain Analysis: Fetching data from Yahoo Finance
+# Fetch Option Chain Data from Yahoo Finance (simplified for implementation)
 def fetch_option_chain(ticker_symbol, strike_price, expiry_date):
     try:
         ticker_obj = yf.Ticker(ticker_symbol)
-        option_expirations = ticker_obj.options
-        if str(expiry_date) not in option_expirations:
-            st.write(f"Error: Expiry date {expiry_date} is not available for the selected ticker.")
-            return None
-
-        options_chain = ticker_obj.option_chain(str(expiry_date))
+        options_chain = ticker_obj.option_chain(expiry_date)
         calls = options_chain.calls
         puts = options_chain.puts
 
