@@ -11,3 +11,4 @@ seaborn
 pandas_ta
 plotly
 beautifulsoup4>=4.11.1
+scikit-learn>=1.2.2
