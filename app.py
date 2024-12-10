@@ -44,6 +44,11 @@ roberta_model = RobertaForSequenceClassification.from_pretrained('roberta-base')
 # Your NewsAPI key (provided by you)
 NEWS_API_KEY = "990f863a4f65430a99f9b0cac257f432"
 
+# Function to map sentiment to numerical values
+def sentiment_to_num(sentiment):
+    sentiment_map = {"Negative": -1, "Neutral": 0, "Positive": 1}
+    return sentiment_map.get(sentiment, 0)  # Default to 0 if sentiment is unknown
+
 # Function to get financial sentiment using FinBERT
 def get_financial_sentiment(text):
     inputs = finbert_tokenizer(text, return_tensors="pt", truncation=True, padding=True)
@@ -153,10 +158,14 @@ def predict():
     # Fetch news sentiment using both FinBERT and RoBERTa
     finbert_sentiment_score = get_financial_sentiment(ticker_name)
     roberta_sentiment_score = get_roberta_sentiment(ticker_name)
-    combined_sentiment_score = (finbert_sentiment_score + roberta_sentiment_score) / 2  # Combine both sentiment scores
 
-    st.write(f"FinBERT Sentiment: {finbert_sentiment_score}")
-    st.write(f"RoBERTa Sentiment: {roberta_sentiment_score}")
+    # Map sentiment to numerical values and combine them
+    finbert_sentiment_num = sentiment_to_num(finbert_sentiment_score)
+    roberta_sentiment_num = sentiment_to_num(roberta_sentiment_score)
+    combined_sentiment_score = (finbert_sentiment_num + roberta_sentiment_num) / 2
+
+    st.write(f"FinBERT Sentiment: {finbert_sentiment_score} (Numerical: {finbert_sentiment_num})")
+    st.write(f"RoBERTa Sentiment: {roberta_sentiment_score} (Numerical: {roberta_sentiment_num})")
     st.write(f"Combined Sentiment Score based on news: {combined_sentiment_score}")
 
     sentiment_score, news_time = get_news_sentiment(ticker_name)
