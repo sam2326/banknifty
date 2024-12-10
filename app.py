@@ -7,8 +7,6 @@ from torch.nn.functional import softmax
 import requests
 from textblob import TextBlob
 from datetime import datetime, timedelta
-from bs4 import BeautifulSoup
-import re
 
 # Streamlit UI setup
 st.set_page_config(page_title="Trading Predictions", layout="wide")
@@ -71,62 +69,29 @@ def fetch_sp500_data():
         st.write(f"Error fetching S&P 500 data: {e}")
         return None
 
-# Combined News Sentiment from API and Scraping
-def get_combined_sentiment(ticker_name):
-    # Get headlines from NewsAPI
-    newsapi_headlines = get_newsapi_headlines(ticker_name)
-
-    # Get headlines from Google News scraping
-    scraped_headlines = scrape_google_news(ticker_name)
-
-    # Combine headlines
-    combined_headlines = newsapi_headlines + scraped_headlines
-
-    if not combined_headlines:
-        st.write("Warning: No news headlines found for sentiment analysis.")
-        return 0  # Return a default neutral sentiment score
-
-    # Calculate sentiment score
-    return get_sentiment_score(combined_headlines)
-
-# Fetch headlines using NewsAPI
-def get_newsapi_headlines(ticker_name):
+# Function to get news sentiment for a given index/stock
+def get_news_sentiment(ticker_name):
     api_key = "990f863a4f65430a99f9b0cac257f432"  # Your NewsAPI key
-    url = f'https://newsapi.org/v2/everything?q={ticker_name}&apiKey={api_key}'
+    url = f'https://newsapi.org/v2/everything?q={ticker_name} OR RBI OR "interest rates" OR "monetary policy" OR "banking sector" OR "GDP growth" OR "inflation" OR "earnings report" OR "trade wars" OR "interest rate hikes" OR "acquisitions" OR "merger" OR "quarterly results"&apiKey={api_key}'
+
     try:
         response = requests.get(url)
         response.raise_for_status()  # Ensure the request was successful
         data = response.json()
 
         if 'articles' in data and data['articles']:
-            return [article['title'] for article in data['articles'] if 'title' in article]
+            articles = data['articles']
+            headlines = [article['title'] for article in articles if article['title']]
+            sentiment_score = get_sentiment_score(headlines)
+            return sentiment_score
         else:
-            return []
-    except Exception as e:
-        st.write(f"Error fetching data from NewsAPI: {e}")
-        return []
+            st.write("Warning: No articles found.")
+            return 0
+    except requests.exceptions.RequestException as e:
+        st.write(f"Error fetching news: {e}")
+        return 0  # Return 0 if there's an error
 
-# Google News Scraping function
-def scrape_google_news(ticker_name):
-    url = f"https://news.google.com/search?q={ticker_name}&hl=en-IN&gl=IN&ceid=IN%3Aen"
-    try:
-        # Get the HTML of the page
-        response = requests.get(url)
-        soup = BeautifulSoup(response.content, 'html.parser')
-        
-        # Extract headlines from the page
-        headlines = []
-        for headline in soup.find_all('h3'):
-            text = headline.get_text()
-            if text:
-                headlines.append(text)
-
-        return headlines
-    except Exception as e:
-        st.write(f"Error fetching data from Google News: {e}")
-        return []
-
-# Calculate Sentiment Score from Headlines
+# Function to calculate sentiment score from headlines
 def get_sentiment_score(news_headlines):
     sentiment_score = 0
     for headline in news_headlines:
@@ -147,14 +112,19 @@ def predict_ltp(current_ltp, ticker_price, strike_price, india_vix, sp500_price,
     predicted_ltp = current_ltp + sentiment_factor + strike_impact + sp500_impact + (current_ltp * random_factor)
     return round(predicted_ltp, 2)
 
+# Function to display sentiment score with timestamp
+def display_sentiment_with_time():
+    sentiment_score = get_news_sentiment(ticker_name)
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    st.write(f"Sentiment Score: {sentiment_score} (Last updated: {timestamp})")
+
 # Main logic for prediction
 def predict():
     ticker_price, ticker_data = fetch_ticker_data(ticker_symbol)
     if ticker_price is None:
         st.warning(f"Could not fetch data for {ticker_name}.")
-        return
-
-    st.write(f"Current price for {ticker_name}: {ticker_price}")
+    else:
+        st.write(f"Current price for {ticker_name}: {ticker_price}")
 
     # Fetch India VIX
     india_vix_ticker = yf.Ticker("^INDIAVIX")
@@ -172,9 +142,8 @@ def predict():
     else:
         st.write(f"Current S&P 500 price: {sp500_price}")
 
-    # Fetch combined news sentiment
-    sentiment_score = get_combined_sentiment(ticker_name)
-    st.write(f"Sentiment Score based on news: {sentiment_score}")
+    # Fetch news sentiment and display it with the timestamp
+    display_sentiment_with_time()
 
     # Predict LTP
     predicted_ltp = predict_ltp(ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score)
@@ -197,6 +166,6 @@ def predict():
     else:
         st.write("Suggestion: Avoid")
 
-# Button to trigger prediction
+# Add a button to trigger prediction manually
 if st.button("Get Prediction"):
     predict()
