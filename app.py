@@ -83,7 +83,9 @@ def get_financial_sentiment(text):
     outputs = model_finbert(**inputs)
     probs = softmax(outputs.logits, dim=-1)
     sentiment = torch.argmax(probs).item()
-    sentiment_map = {0: "Negative", 1: "Neutral", 2: "Positive"}
+    
+    # Map the sentiment labels to numeric values
+    sentiment_map = {0: -1, 1: 0, 2: 1}  # Negative = -1, Neutral = 0, Positive = 1
     return sentiment_map[sentiment]
 
 # Function to get general sentiment using RoBERTa
@@ -92,7 +94,9 @@ def get_general_sentiment(text):
     outputs = model_roberta(**inputs)
     probs = softmax(outputs.logits, dim=-1)
     sentiment = torch.argmax(probs).item()
-    sentiment_map = {0: "Negative", 1: "Neutral", 2: "Positive"}
+    
+    # Map the sentiment labels to numeric values
+    sentiment_map = {0: -1, 1: 0, 2: 1}  # Negative = -1, Neutral = 0, Positive = 1
     return sentiment_map[sentiment]
 
 # Function to get combined sentiment score from FinBERT and RoBERTa
