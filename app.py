@@ -7,8 +7,6 @@ from torch.nn.functional import softmax
 import requests
 from textblob import TextBlob
 from datetime import datetime, timedelta
-from bs4 import BeautifulSoup
-import re
 
 # Streamlit UI setup
 st.set_page_config(page_title="Trading Predictions", layout="wide")
@@ -96,13 +94,13 @@ def get_news_sentiment(ticker_name):
 # Function to calculate sentiment score from headlines
 def get_sentiment_score(news_headlines):
     sentiment_score = 0
-    if news_headlines:
-        for headline in news_headlines:
-            try:
-                if isinstance(headline, str) and headline.strip():
-                    sentiment_score += TextBlob(headline).sentiment.polarity
-            except Exception as e:
-                st.write(f"Error analyzing sentiment for headline: {headline}. Error: {e}")
+    for headline in news_headlines:
+        try:
+            if isinstance(headline, str) and headline.strip():
+                sentiment_score += TextBlob(headline).sentiment.polarity
+        except Exception as e:
+            st.write(f"Error analyzing sentiment for headline: {headline}. Error: {e}")
+    
     return round(sentiment_score / len(news_headlines), 2) if news_headlines else 0
 
 # Function to predict LTP for the selected ticker
@@ -166,3 +164,4 @@ def predict():
 # Add a button to trigger prediction manually
 if st.button("Get Prediction"):
     predict()
+
