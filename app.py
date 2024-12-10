@@ -114,8 +114,8 @@ def predict_ltp(current_ltp, ticker_price, strike_price, india_vix, sp500_price,
 
 # Function to display sentiment score with timestamp
 def display_sentiment_with_time():
-    sentiment_score = get_news_sentiment(ticker_name)
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    sentiment_score = get_news_sentiment(ticker_name)  # Fetch news sentiment
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")  # Get timestamp
     st.write(f"Sentiment Score: {sentiment_score} (Last updated: {timestamp})")
 
 # Main logic for prediction
