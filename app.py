@@ -103,13 +103,28 @@ def get_sentiment_score(news_headlines):
     
     return round(sentiment_score / len(news_headlines), 2) if news_headlines else 0
 
+# Function to predict LTP for the selected ticker
+def predict_ltp(current_ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score):
+    if current_ltp is None or ticker_price is None or strike_price is None or india_vix is None or sp500_price is None or sentiment_score is None:
+        st.error("Error: One or more required parameters are missing or invalid.")
+        return None
+    
+    sentiment_factor = india_vix * 0.1 + sentiment_score * 0.05
+    strike_impact = (strike_price - ticker_price) * (0.01 if strike_price < ticker_price else -0.01)
+    sp500_impact = sp500_price * 0.005
+    random_factor = random.uniform(-0.01, 0.02)
+    
+    predicted_ltp = current_ltp + sentiment_factor + strike_impact + sp500_impact + (current_ltp * random_factor)
+    return round(predicted_ltp, 2)
+
 # Main logic for prediction
 def predict():
     ticker_price, ticker_data = fetch_ticker_data(ticker_symbol)
     if ticker_price is None:
         st.warning(f"Could not fetch data for {ticker_name}.")
-    else:
-        st.write(f"Current price for {ticker_name}: {ticker_price}")
+        return
+
+    st.write(f"Current price for {ticker_name}: {ticker_price}")
 
     # Fetch India VIX
     india_vix_ticker = yf.Ticker("^INDIAVIX")
@@ -124,15 +139,24 @@ def predict():
     sp500_price = fetch_sp500_data()
     if sp500_price is None:
         st.warning("Could not fetch S&P 500 data.")
-    else:
-        st.write(f"Current S&P 500 price: {sp500_price}")
+        return
+    st.write(f"Current S&P 500 price: {sp500_price}")
 
     # Fetch news sentiment
     sentiment_score = get_news_sentiment(ticker_name)
     st.write(f"Sentiment Score based on news: {sentiment_score}")
 
+    # Validate inputs before prediction
+    if ltp is None or strike_price is None:
+        st.error("LTP and Strike Price must be provided.")
+        return
+
     # Predict LTP
     predicted_ltp = predict_ltp(ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score)
+    if predicted_ltp is None:
+        st.error("Error: Could not calculate predicted LTP.")
+        return
+
     st.write(f"Predicted LTP for next day: {predicted_ltp}")
 
     # Stop Loss and Max LTP
@@ -152,19 +176,6 @@ def predict():
     else:
         st.write("Suggestion: Avoid")
 
-# Option Chain Analysis
-def option_chain_analysis():
-    calls, puts = fetch_option_chain(ticker_symbol)
-    if calls is not None and puts is not None:
-        st.write(f"Available Call options for {ticker_name}:")
-        st.write(calls)
-        st.write(f"Available Put options for {ticker_name}:")
-        st.write(puts)
-
 # Add a button to trigger prediction manually
 if st.button("Get Prediction"):
     predict()
-
-# Add a button for option chain analysis
-if st.button("Get Option Chain Analysis"):
-    option_chain_analysis()
