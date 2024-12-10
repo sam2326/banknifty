@@ -11,12 +11,13 @@ import pandas as pd
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error
+import numpy as np
 
 # Streamlit UI setup
 st.set_page_config(page_title="Trading Predictions", layout="wide")
 
 # Title of the App
-st.title("Trading Predictions")
+st.title("Trading Predictions with Machine Learning")
 
 # Supported Tickers
 SUPPORTED_TICKERS = {
@@ -56,10 +57,42 @@ def get_financial_sentiment(text):
 def fetch_ticker_data(ticker):
     try:
         ticker_obj = yf.Ticker(ticker)
-        data = ticker_obj.history(period="1y", interval="1d")  # Fetch 1 year of data
-        return data
+        data = ticker_obj.history(period="60d", interval="1d")  # Fetch 60 days of historical data
+        current_price = data["Close"].iloc[-1]
+        return current_price, data
     except Exception as e:
         st.write(f"Error fetching data for {ticker}: {e}")
+        return None, None
+
+# Function to prepare features and target for ML model
+def prepare_data(data):
+    try:
+        data['Returns'] = data['Close'].pct_change()  # Calculate daily returns
+        data['Volatility'] = data['Close'].rolling(window=5).std()  # Rolling volatility
+        data['Momentum'] = data['Close'] - data['Close'].rolling(window=5).mean()  # Momentum
+        data = data.dropna()  # Drop rows with NaN values
+        X = data[['Open', 'High', 'Low', 'Volatility', 'Momentum']]
+        y = data['Close']
+        return X, y
+    except Exception as e:
+        st.write(f"Error preparing data: {e}")
+        return None, None
+
+# Function to train the ML model
+def train_ml_model(data):
+    X, y = prepare_data(data)
+    if X is None or y is None:
+        return None
+    try:
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+        model = RandomForestRegressor(n_estimators=100, random_state=42)
+        model.fit(X_train, y_train)
+        y_pred = model.predict(X_test)
+        mse = mean_squared_error(y_test, y_pred)
+        st.write(f"Model Mean Squared Error (MSE): {round(mse, 2)}")
+        return model
+    except Exception as e:
+        st.write(f"Error training ML model: {e}")
         return None
 
 # Function to fetch S&P 500 data
@@ -72,104 +105,55 @@ def fetch_sp500_data():
         st.write(f"Error fetching S&P 500 data: {e}")
         return None
 
-# Function to get news sentiment for a given index/stock
-def get_news_sentiment(ticker_name):
-    api_key = "990f863a4f65430a99f9b0cac257f432"  # Your NewsAPI key
-    url = f'https://newsapi.org/v2/everything?q={ticker_name} OR RBI OR "interest rates" OR "monetary policy" OR "banking sector" OR "GDP growth" OR "inflation" OR "earnings report" OR "trade wars" OR "interest rate hikes" OR "acquisitions" OR "merger" OR "quarterly results"&apiKey={api_key}'
-
+# Function to predict LTP for the selected ticker
+def predict_ltp(model, X_latest):
     try:
-        response = requests.get(url)
-        response.raise_for_status()  # Ensure the request was successful
-        data = response.json()
+        predicted_price = model.predict([X_latest])
+        return round(predicted_price[0], 2)
+    except Exception as e:
+        st.write(f"Error predicting LTP: {e}")
+        return None
 
-        if 'articles' in data and data['articles']:
-            articles = data['articles']
-            headlines = [article['title'] for article in articles if article['title']]
-            sentiment_score = get_sentiment_score(headlines)
-            return sentiment_score
-        else:
-            st.write("Warning: No articles found.")
-            return 0
-    except requests.exceptions.RequestException as e:
-        st.write(f"Error fetching news: {e}")
-        return 0  # Return 0 if there's an error
-
-# Function to calculate sentiment score from headlines
-def get_sentiment_score(news_headlines):
-    sentiment_score = 0
-    for headline in news_headlines:
-        try:
-            if isinstance(headline, str) and headline.strip():
-                sentiment_score += TextBlob(headline).sentiment.polarity
-        except Exception as e:
-            st.write(f"Error analyzing sentiment for headline: {headline}. Error: {e}")
-    
-    return round(sentiment_score / len(news_headlines), 2) if news_headlines else 0
-
-# Train a machine learning model (RandomForestRegressor)
-def train_ml_model(data):
-    data['Date'] = data.index
-    data['Date'] = pd.to_datetime(data['Date'])
-    data['Year'] = data['Date'].dt.year
-    data['Month'] = data['Date'].dt.month
-    data['Day'] = data['Date'].dt.day
-    data['Weekday'] = data['Date'].dt.weekday
-    
-    # We can add more features like moving averages, RSI, etc.
-    data['Moving_Avg'] = data['Close'].rolling(window=5).mean()
-    data['Volatility'] = data['Close'].pct_change()
-    
-    # Define X and y
-    X = data[['Year', 'Month', 'Day', 'Weekday', 'Moving_Avg', 'Volatility']].dropna()
-    y = data['Close'].shift(-1).dropna()  # Target: Next day's closing price
-    
-    # Train/test split
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-    
-    model = RandomForestRegressor(n_estimators=100, random_state=42)
-    model.fit(X_train, y_train)
-    
-    # Test and evaluate the model
-    y_pred = model.predict(X_test)
-    rmse = mean_squared_error(y_test, y_pred, squared=False)
-    
-    st.write(f"Model Evaluation (RMSE): {rmse}")
-    
-    return model
-
-# Predict the LTP using the trained model
-def predict_ltp_ml(model, ticker_data):
-    features = ticker_data[['Year', 'Month', 'Day', 'Weekday', 'Moving_Avg', 'Volatility']].dropna().iloc[-1]
-    predicted_ltp = model.predict([features])[0]
-    return round(predicted_ltp, 2)
-
-# Main logic for prediction with machine learning
+# Main logic for prediction
 def predict():
-    ticker_data = fetch_ticker_data(ticker_symbol)
-    if ticker_data is None:
+    ticker_price, ticker_data = fetch_ticker_data(ticker_symbol)
+    if ticker_price is None or ticker_data is None:
         st.warning(f"Could not fetch data for {ticker_name}.")
+        return
+
+    # Train the ML model
+    model = train_ml_model(ticker_data)
+    if model is None:
+        st.warning("Failed to train the ML model.")
+        return
+
+    # Prepare the latest feature set for prediction
+    X_latest, _ = prepare_data(ticker_data)
+    X_latest = X_latest.iloc[-1].values  # Get the latest row of features
+
+    # Predict LTP using ML model
+    predicted_ltp = predict_ltp(model, X_latest)
+    if predicted_ltp is None:
+        return
+
+    st.write(f"Predicted LTP for next day: {predicted_ltp}")
+
+    # Stop Loss and Max LTP
+    stop_loss = round(predicted_ltp * (1 - (risk_percent / 100)), 2)
+    max_ltp = round(predicted_ltp * (1 + (profit_percent / 100)), 2)
+
+    st.write(f"Stop Loss: {stop_loss}")
+    st.write(f"Target Price: {max_ltp}")
+
+    # Risk-to-Reward Ratio (RRR)
+    rrr = round((max_ltp - predicted_ltp) / (predicted_ltp - stop_loss), 2) if stop_loss and max_ltp else None
+    st.write(f"Risk-to-Reward Ratio (RRR): {rrr}")
+
+    # Trading suggestion
+    if rrr and rrr > 1:
+        st.write("Suggestion: Buy")
     else:
-        st.write(f"Current price for {ticker_name}: {ticker_data['Close'].iloc[-1]}")
-        
-        model = train_ml_model(ticker_data)  # Train the model with historical data
-        predicted_ltp = predict_ltp_ml(model, ticker_data)  # Predict next day's LTP
-        
-        st.write(f"Predicted LTP for next day (ML Model): {predicted_ltp}")
-        
-        # Existing features for Stop Loss, Target Price, RRR, etc.
-        stop_loss = round(predicted_ltp * (1 - (risk_percent / 100)), 2)
-        max_ltp = round(predicted_ltp * (1 + (profit_percent / 100)), 2)
-
-        st.write(f"Stop Loss: {stop_loss}")
-        st.write(f"Target Price: {max_ltp}")
-
-        rrr = round((max_ltp - predicted_ltp) / (predicted_ltp - stop_loss), 2) if stop_loss and max_ltp else None
-        st.write(f"Risk-to-Reward Ratio (RRR): {rrr}")
-
-        if rrr and rrr > 1:
-            st.write("Suggestion: Buy")
-        else:
-            st.write("Suggestion: Avoid")
+        st.write("Suggestion: Avoid")
 
 # Add a button to trigger prediction manually
 if st.button("Get Prediction"):
