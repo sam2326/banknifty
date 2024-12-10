@@ -6,8 +6,9 @@ from transformers import BertTokenizer, BertForSequenceClassification
 from torch.nn.functional import softmax
 import requests
 from textblob import TextBlob
-from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
+from bs4 import BeautifulSoup
+import re
 
 # Streamlit UI setup
 st.set_page_config(page_title="Trading Predictions", layout="wide")
@@ -39,44 +40,15 @@ profit_percent = st.sidebar.number_input("Enter Profit Percentage (%)", min_valu
 tokenizer = BertTokenizer.from_pretrained('yiyanghkust/finbert-tone', do_lower_case=False)
 model = BertForSequenceClassification.from_pretrained('yiyanghkust/finbert-tone')
 
-# Function to scrape Google News for headlines
-def scrape_google_news(query):
-    """
-    Scrapes Google News for the latest headlines based on a query.
-    Args:
-        query (str): Search query for Google News.
-    Returns:
-        list: A list of news headlines.
-    """
-    base_url = "https://news.google.com"
-    search_url = f"{base_url}/search?q={query}&hl=en-US&gl=US&ceid=US:en"
+# Function to get financial sentiment using FinBERT
+def get_financial_sentiment(text):
+    inputs = tokenizer(text, return_tensors="pt", truncation=True, padding=True)
+    outputs = model(**inputs)
+    probs = softmax(outputs.logits, dim=-1)
+    sentiment = torch.argmax(probs).item()
 
-    try:
-        response = requests.get(search_url)
-        response.raise_for_status()  # Ensure the request was successful
-        soup = BeautifulSoup(response.text, 'html.parser')
-
-        # Extract headlines
-        headlines = []
-        for item in soup.find_all("a", class_="DY5T1d"):
-            headlines.append(item.get_text())
-
-        return headlines[:10]  # Return the top 10 headlines
-    except Exception as e:
-        st.write(f"Error scraping Google News: {e}")
-        return []
-
-# Function to calculate sentiment score from headlines
-def get_sentiment_score(news_headlines):
-    sentiment_score = 0
-    for headline in news_headlines:
-        try:
-            if isinstance(headline, str) and headline.strip():
-                sentiment_score += TextBlob(headline).sentiment.polarity
-        except Exception as e:
-            st.write(f"Error analyzing sentiment for headline: {headline}. Error: {e}")
-    
-    return round(sentiment_score / len(news_headlines), 2) if news_headlines else 0
+    sentiment_map = {0: "Negative", 1: "Neutral", 2: "Positive"}
+    return sentiment_map[sentiment]
 
 # Function to fetch data for selected ticker
 def fetch_ticker_data(ticker):
@@ -98,6 +70,73 @@ def fetch_sp500_data():
     except Exception as e:
         st.write(f"Error fetching S&P 500 data: {e}")
         return None
+
+# Combined News Sentiment from API and Scraping
+def get_combined_sentiment(ticker_name):
+    # Get headlines from NewsAPI
+    newsapi_headlines = get_newsapi_headlines(ticker_name)
+
+    # Get headlines from Google News scraping
+    scraped_headlines = scrape_google_news(ticker_name)
+
+    # Combine headlines
+    combined_headlines = newsapi_headlines + scraped_headlines
+
+    if not combined_headlines:
+        st.write("Warning: No news headlines found for sentiment analysis.")
+        return 0  # Return a default neutral sentiment score
+
+    # Calculate sentiment score
+    return get_sentiment_score(combined_headlines)
+
+# Fetch headlines using NewsAPI
+def get_newsapi_headlines(ticker_name):
+    api_key = "990f863a4f65430a99f9b0cac257f432"  # Your NewsAPI key
+    url = f'https://newsapi.org/v2/everything?q={ticker_name}&apiKey={api_key}'
+    try:
+        response = requests.get(url)
+        response.raise_for_status()  # Ensure the request was successful
+        data = response.json()
+
+        if 'articles' in data and data['articles']:
+            return [article['title'] for article in data['articles'] if 'title' in article]
+        else:
+            return []
+    except Exception as e:
+        st.write(f"Error fetching data from NewsAPI: {e}")
+        return []
+
+# Google News Scraping function
+def scrape_google_news(ticker_name):
+    url = f"https://news.google.com/search?q={ticker_name}&hl=en-IN&gl=IN&ceid=IN%3Aen"
+    try:
+        # Get the HTML of the page
+        response = requests.get(url)
+        soup = BeautifulSoup(response.content, 'html.parser')
+        
+        # Extract headlines from the page
+        headlines = []
+        for headline in soup.find_all('h3'):
+            text = headline.get_text()
+            if text:
+                headlines.append(text)
+
+        return headlines
+    except Exception as e:
+        st.write(f"Error fetching data from Google News: {e}")
+        return []
+
+# Calculate Sentiment Score from Headlines
+def get_sentiment_score(news_headlines):
+    sentiment_score = 0
+    for headline in news_headlines:
+        try:
+            if isinstance(headline, str) and headline.strip():
+                sentiment_score += TextBlob(headline).sentiment.polarity
+        except Exception as e:
+            st.write(f"Error analyzing sentiment for headline: {headline}. Error: {e}")
+    
+    return round(sentiment_score / len(news_headlines), 2) if news_headlines else 0
 
 # Function to predict LTP for the selected ticker
 def predict_ltp(current_ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score):
@@ -133,9 +172,8 @@ def predict():
     else:
         st.write(f"Current S&P 500 price: {sp500_price}")
 
-    # Fetch news sentiment using scraped headlines
-    headlines = scrape_google_news(ticker_name)
-    sentiment_score = get_sentiment_score(headlines)
+    # Fetch combined news sentiment
+    sentiment_score = get_combined_sentiment(ticker_name)
     st.write(f"Sentiment Score based on news: {sentiment_score}")
 
     # Predict LTP
@@ -159,6 +197,6 @@ def predict():
     else:
         st.write("Suggestion: Avoid")
 
-# Add a button to trigger prediction manually
+# Button to trigger prediction
 if st.button("Get Prediction"):
     predict()
