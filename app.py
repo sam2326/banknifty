@@ -34,19 +34,9 @@ ltp = st.sidebar.number_input("Enter Current LTP", min_value=0.0, value=765.50, 
 risk_percent = st.sidebar.number_input("Enter Risk Percentage (%)", min_value=0.0, max_value=100.0, value=1.0, step=0.1)
 profit_percent = st.sidebar.number_input("Enter Profit Percentage (%)", min_value=0.0, max_value=100.0, value=5.0, step=0.1)
 
-# Load FinBERT for Sentiment Analysis
+# Load FinBERT for Sentiment Analysis (Not used anymore directly)
 tokenizer = BertTokenizer.from_pretrained('yiyanghkust/finbert-tone', do_lower_case=False)
 model = BertForSequenceClassification.from_pretrained('yiyanghkust/finbert-tone')
-
-# Function to get financial sentiment using FinBERT
-def get_financial_sentiment(text):
-    inputs = tokenizer(text, return_tensors="pt", truncation=True, padding=True)
-    outputs = model(**inputs)
-    probs = softmax(outputs.logits, dim=-1)
-    sentiment = torch.argmax(probs).item()
-
-    sentiment_map = {0: "Negative", 1: "Neutral", 2: "Positive"}
-    return sentiment_map[sentiment]
 
 # Function to fetch data for selected ticker
 def fetch_ticker_data(ticker):
@@ -163,10 +153,6 @@ def predict():
         st.write(f"Google Finance Current Price: {google_finance_price}")
     else:
         google_finance_price = ticker_price  # Use Yahoo Finance price if Google Finance data is unavailable
-
-    # Fetch news sentiment for the selected ticker (existing FinBERT sentiment)
-    sentiment_score = get_news_sentiment(ticker_name)
-    st.write(f"Sentiment Score based on news: {sentiment_score}")
 
     # Predict LTP using additional data (including Google News sentiment)
     predicted_ltp = predict_ltp(ltp, google_finance_price, strike_price, india_vix, sp500_price, google_news_sentiment_score)
