@@ -6,7 +6,7 @@ from transformers import BertTokenizer, BertForSequenceClassification
 from torch.nn.functional import softmax
 import requests
 from textblob import TextBlob
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # Streamlit UI setup
 st.set_page_config(page_title="Trading Predictions", layout="wide")
@@ -69,25 +69,10 @@ def fetch_sp500_data():
         st.write(f"Error fetching S&P 500 data: {e}")
         return None
 
-# Function to determine market trend
-def determine_market_trend():
-    try:
-        sp500_data = yf.Ticker("^GSPC").history(period="2d")["Close"]
-        if len(sp500_data) < 2:
-            st.write("Warning: Not enough data to determine market trend. Defaulting to neutral trend.")
-            return "neutral"
-        sp500_previous = sp500_data.iloc[-2]
-        sp500_current = sp500_data.iloc[-1]
-        trend = "down" if sp500_current < sp500_previous else "up"
-        return trend
-    except Exception as e:
-        st.write(f"Error determining market trend: {e}")
-        return "neutral"
-
 # Function to get news sentiment for a given index/stock
 def get_news_sentiment(ticker_name):
     api_key = "990f863a4f65430a99f9b0cac257f432"  # Your NewsAPI key
-    url = f'https://newsapi.org/v2/everything?q={ticker_name} OR RBI OR "interest rates" OR "monetary policy" OR "banking sector" OR "GDP growth" OR "inflation" OR "earnings report" OR "trade wars" OR "interest rate hikes" OR "acquisitions" OR "merger" OR "quarterly results"&apiKey={api_key}'
+    url = f'https://newsapi.org/v2/everything?q={ticker_name} OR RBI OR "interest rates" OR "monetary policy" OR "banking sector" OR "GDP growth" OR "inflation"&apiKey={api_key}'
 
     try:
         response = requests.get(url)
@@ -118,24 +103,35 @@ def get_sentiment_score(news_headlines):
     
     return round(sentiment_score / len(news_headlines), 2) if news_headlines else 0
 
-# Function to predict LTP for the selected ticker
+# Function to determine market trend using moving averages
+def determine_market_trend():
+    try:
+        data = yf.Ticker(ticker_symbol).history(period="1mo")
+        data['5_MA'] = data['Close'].rolling(window=5).mean()
+        data['20_MA'] = data['Close'].rolling(window=20).mean()
+        if data['5_MA'].iloc[-1] > data['20_MA'].iloc[-1]:
+            return "up"
+        elif data['5_MA'].iloc[-1] < data['20_MA'].iloc[-1]:
+            return "down"
+        else:
+            return "neutral"
+    except Exception as e:
+        st.write(f"Error determining market trend: {e}")
+        return "neutral"
+
+# Enhanced prediction function
 def predict_ltp(current_ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score, market_trend):
-    trend_factor = 0.01 if market_trend == "up" else -0.01 if market_trend == "down" else 0
-    sentiment_factor = india_vix * 0.1 + sentiment_score * 0.05
-    strike_impact = (strike_price - ticker_price) * (0.01 if strike_price < ticker_price else -0.01)
-    sp500_impact = sp500_price * 0.005
-    random_factor = random.uniform(-0.01, 0.02)
-    predicted_ltp = current_ltp + trend_factor + sentiment_factor + strike_impact + sp500_impact + (current_ltp * random_factor)
+    trend_factor = 0.02 if market_trend == "up" else -0.02 if market_trend == "down" else 0
+    sentiment_factor = india_vix * 0.1 + sentiment_score * 0.1
+    strike_impact = (strike_price - ticker_price) * (-0.02 if market_trend == "down" else 0.01)
+    sp500_impact = sp500_price * 0.003
+    random_factor = random.uniform(-0.005, 0.01)
+    momentum_factor = (ticker_price - ticker_price * 0.99) * (0.05 if market_trend == "up" else -0.05)
+
+    predicted_ltp = current_ltp + trend_factor + sentiment_factor + strike_impact + sp500_impact + momentum_factor + (current_ltp * random_factor)
     return round(predicted_ltp, 2)
 
-# Function to display sentiment score with timestamp
-def display_sentiment_with_time():
-    sentiment_score = get_news_sentiment(ticker_name)  # Fetch news sentiment
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")  # Get timestamp
-    st.write(f"Sentiment Score: {sentiment_score} (Last updated: {timestamp})")
-    return sentiment_score  # Return sentiment score for use in the prediction
-
-# Main logic for prediction
+# Main prediction logic
 def predict():
     ticker_price, ticker_data = fetch_ticker_data(ticker_symbol)
     if ticker_price is None:
@@ -144,50 +140,44 @@ def predict():
 
     st.write(f"Current price for {ticker_name}: {ticker_price}")
 
-    # Fetch India VIX
     india_vix_ticker = yf.Ticker("^INDIAVIX")
     try:
         india_vix = india_vix_ticker.history(period="1d", interval="1m")["Close"].iloc[-1]
     except:
-        india_vix = 15.0  # Default VIX value if fetching fails
+        india_vix = 15.0
         st.write("Warning: Using default India VIX value.")
     st.write(f"India VIX: {india_vix}")
 
-    # Fetch S&P 500 data
     sp500_price = fetch_sp500_data()
     if sp500_price is None:
         st.warning("Could not fetch S&P 500 data.")
     else:
         st.write(f"Current S&P 500 price: {sp500_price}")
 
-    # Determine market trend
     market_trend = determine_market_trend()
     st.write(f"Market Trend: {market_trend}")
 
-    # Fetch news sentiment and display it with the timestamp
     sentiment_score = display_sentiment_with_time()
 
-    # Predict LTP
     predicted_ltp = predict_ltp(ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score, market_trend)
     st.write(f"Predicted LTP for next day: {predicted_ltp}")
 
-    # Stop Loss and Max LTP
-    stop_loss = round(predicted_ltp * (1 - (risk_percent / 100)), 2)
-    max_ltp = round(predicted_ltp * (1 + (profit_percent / 100)), 2)
+    stop_loss_factor = 0.02 if market_trend == "up" else 0.01
+    profit_factor = 0.05 if market_trend == "up" else 0.03
+
+    stop_loss = round(predicted_ltp * (1 - stop_loss_factor), 2)
+    max_ltp = round(predicted_ltp * (1 + profit_factor), 2)
 
     st.write(f"Stop Loss: {stop_loss}")
     st.write(f"Target Price: {max_ltp}")
 
-    # Risk-to-Reward Ratio (RRR)
     rrr = round((max_ltp - predicted_ltp) / (predicted_ltp - stop_loss), 2) if stop_loss and max_ltp else None
     st.write(f"Risk-to-Reward Ratio (RRR): {rrr}")
 
-    # Trading suggestion
     if rrr and rrr > 1:
         st.write("Suggestion: Buy")
     else:
         st.write("Suggestion: Avoid")
 
-# Add a button to trigger prediction manually
 if st.button("Get Prediction"):
     predict()
