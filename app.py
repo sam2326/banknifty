@@ -2,7 +2,7 @@ import yfinance as yf
 import streamlit as st
 import random
 import torch
-from transformers import BertTokenizer, BertForSequenceClassification, RobertaTokenizer, RobertaForSequenceClassification
+from transformers import BertTokenizer, BertForSequenceClassification
 from torch.nn.functional import softmax
 import requests
 from textblob import TextBlob
@@ -35,53 +35,18 @@ risk_percent = st.sidebar.number_input("Enter Risk Percentage (%)", min_value=0.
 profit_percent = st.sidebar.number_input("Enter Profit Percentage (%)", min_value=0.0, max_value=100.0, value=5.0, step=0.1)
 
 # Load FinBERT for Sentiment Analysis
-finbert_tokenizer = BertTokenizer.from_pretrained('yiyanghkust/finbert-tone', do_lower_case=False)
-finbert_model = BertForSequenceClassification.from_pretrained('yiyanghkust/finbert-tone')
-
-# Load RoBERTa for Sentiment Analysis
-roberta_tokenizer = RobertaTokenizer.from_pretrained('cardiffnlp/twitter-roberta-base-sentiment')
-roberta_model = RobertaForSequenceClassification.from_pretrained('cardiffnlp/twitter-roberta-base-sentiment')
+tokenizer = BertTokenizer.from_pretrained('yiyanghkust/finbert-tone', do_lower_case=False)
+model = BertForSequenceClassification.from_pretrained('yiyanghkust/finbert-tone')
 
 # Function to get financial sentiment using FinBERT
 def get_financial_sentiment(text):
-    inputs = finbert_tokenizer(text, return_tensors="pt", truncation=True, padding=True)
-    outputs = finbert_model(**inputs)
+    inputs = tokenizer(text, return_tensors="pt", truncation=True, padding=True)
+    outputs = model(**inputs)
     probs = softmax(outputs.logits, dim=-1)
     sentiment = torch.argmax(probs).item()
 
     sentiment_map = {0: "Negative", 1: "Neutral", 2: "Positive"}
     return sentiment_map[sentiment]
-
-# Function to get sentiment using RoBERTa model
-def get_roberta_sentiment(text):
-    inputs = roberta_tokenizer(text, return_tensors="pt", truncation=True, padding=True)
-    outputs = roberta_model(**inputs)
-    probs = softmax(outputs.logits, dim=-1)
-    sentiment = torch.argmax(probs).item()
-
-    sentiment_map = {0: "Negative", 1: "Neutral", 2: "Positive"}
-    return sentiment_map[sentiment]
-
-# Function to aggregate sentiment from both FinBERT and RoBERTa
-def aggregate_sentiment(finbert_text, roberta_text):
-    finbert_sentiment = get_financial_sentiment(finbert_text)  # FinBERT sentiment
-    roberta_sentiment = get_roberta_sentiment(roberta_text)  # RoBERTa sentiment
-
-    # Simple approach: Use the most common sentiment from both models
-    if finbert_sentiment == roberta_sentiment:
-        combined_sentiment = finbert_sentiment
-    else:
-        # If sentiments differ, choose the most positive sentiment
-        sentiment_priority = {"Negative": 0, "Neutral": 1, "Positive": 2}
-        combined_score = sentiment_priority[finbert_sentiment] + sentiment_priority[roberta_sentiment]
-        if combined_score > 2:
-            combined_sentiment = "Positive"
-        elif combined_score == 2:
-            combined_sentiment = "Neutral"
-        else:
-            combined_sentiment = "Negative"
-
-    return combined_sentiment
 
 # Function to fetch data for selected ticker
 def fetch_ticker_data(ticker):
@@ -138,17 +103,37 @@ def get_sentiment_score(news_headlines):
     
     return round(sentiment_score / len(news_headlines), 2) if news_headlines else 0
 
-# Function to display combined sentiment with timestamp
+# Function to aggregate sentiment from both FinBERT and RoBERTa
+def aggregate_sentiment(finbert_text, roberta_text):
+    finbert_sentiment = get_financial_sentiment(finbert_text)  # FinBERT sentiment
+    roberta_sentiment = get_roberta_sentiment(roberta_text)  # RoBERTa sentiment
+
+    # Convert string sentiments to numeric values for computation
+    sentiment_priority = {"Negative": -1, "Neutral": 0, "Positive": 1}
+    finbert_numeric = sentiment_priority[finbert_sentiment]
+    roberta_numeric = sentiment_priority[roberta_sentiment]
+
+    # Combine the numeric values
+    combined_score = (finbert_numeric + roberta_numeric) / 2  # Average sentiment score
+    if combined_score > 0:
+        combined_sentiment = "Positive"
+    elif combined_score == 0:
+        combined_sentiment = "Neutral"
+    else:
+        combined_sentiment = "Negative"
+
+    return combined_sentiment, combined_score  # Return both sentiment and numeric score
+
+# Update the function to return numeric sentiment
 def display_combined_sentiment_with_time():
-    # Fetch headlines from news sentiment
     sentiment_score = get_news_sentiment(ticker_name)
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")  # Get timestamp
 
     # Get combined sentiment (using both FinBERT and RoBERTa)
-    combined_sentiment = aggregate_sentiment(str(sentiment_score), str(sentiment_score))  # You can adjust here to use actual news data
+    combined_sentiment, numeric_sentiment_score = aggregate_sentiment(str(sentiment_score), str(sentiment_score))
     st.write(f"Combined Sentiment Score: {combined_sentiment} (Last updated: {timestamp})")
 
-    return combined_sentiment  # Return combined sentiment for use in prediction
+    return numeric_sentiment_score  # Return numeric sentiment for use in prediction
 
 # Function to predict LTP for the selected ticker
 def predict_ltp(current_ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score):
