@@ -6,7 +6,7 @@ from transformers import BertTokenizer, BertForSequenceClassification
 from torch.nn.functional import softmax
 import requests
 from textblob import TextBlob
-from datetime import datetime, timedelta
+from datetime import datetime
 
 # Streamlit UI setup
 st.set_page_config(page_title="Trading Predictions", layout="wide")
@@ -85,16 +85,17 @@ def get_news_sentiment_newsapi(ticker_name):
             sentiment_score = get_sentiment_score(headlines)
             return sentiment_score
         else:
-            st.write("Warning: No articles found.")
+            st.write("Warning: No articles found from NewsAPI.")
             return 0
     except requests.exceptions.RequestException as e:
-        st.write(f"Error fetching news: {e}")
+        st.write(f"Error fetching news from NewsAPI: {e}")
         return 0  # Return 0 if there's an error
 
 # Function to get news sentiment for a given index/stock from Google News (SerpAPI)
-def get_news_sentiment_google(ticker_name):
-    serpapi_key = "c4e807b7fe597e3421fba24db713faf8f6242eff6825b335936d662dc5dde10f"  # Your SerpAPI key
-    url = f"https://serpapi.com/search?engine=google_finance&q={ticker_name} OR RBI OR 'interest rates' OR 'monetary policy' OR 'banking sector' OR 'GDP growth' OR 'inflation' OR 'earnings report' OR 'trade wars' OR 'interest rate hikes' OR 'acquisitions' OR 'merger' OR 'quarterly results'&api_key={serpapi_key}"
+def get_news_sentiment_google_news(ticker_name):
+    api_key = "c4e807b7fe597e3421fba24db713faf8f6242eff6825b335936d662dc5dde10f"  # Your SerpAPI key
+    query = f'{ticker_name} OR RBI OR "interest rates" OR "monetary policy" OR "banking sector" OR "GDP growth" OR "inflation" OR "earnings report" OR "trade wars" OR "interest rate hikes" OR "acquisitions" OR "merger" OR "quarterly results"'
+    url = f"https://serpapi.com/search?engine=google_finance&q={query}&api_key={api_key}"
 
     try:
         response = requests.get(url)
@@ -107,10 +108,10 @@ def get_news_sentiment_google(ticker_name):
             sentiment_score = get_sentiment_score(headlines)
             return sentiment_score
         else:
-            st.write("Warning: No articles found.")
+            st.write("Warning: No articles found from Google News.")
             return 0
     except requests.exceptions.RequestException as e:
-        st.write(f"Error fetching Google News: {e}")
+        st.write(f"Error fetching news from Google News: {e}")
         return 0  # Return 0 if there's an error
 
 # Function to calculate sentiment score from headlines
@@ -136,16 +137,13 @@ def predict_ltp(current_ltp, ticker_price, strike_price, india_vix, sp500_price,
 
 # Function to display sentiment score with timestamp
 def display_sentiment_with_time():
-    # Fetch sentiment from both APIs
-    sentiment_score_newsapi = get_news_sentiment_newsapi(ticker_name)
-    sentiment_score_google = get_news_sentiment_google(ticker_name)
-    
-    # Average the sentiment scores
-    sentiment_score = (sentiment_score_newsapi + sentiment_score_google) / 2
+    sentiment_score_newsapi = get_news_sentiment_newsapi(ticker_name)  # Fetch news sentiment from NewsAPI
+    sentiment_score_google = get_news_sentiment_google_news(ticker_name)  # Fetch news sentiment from Google News
+
+    sentiment_score = (sentiment_score_newsapi + sentiment_score_google) / 2  # Average sentiment score from both sources
     
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")  # Get timestamp
-    st.write(f"Sentiment Score based on news: {sentiment_score} (Last updated: {timestamp})")
-    
+    st.write(f"Sentiment Score: {sentiment_score} (Last updated: {timestamp})")
     return sentiment_score  # Return sentiment score for use in the prediction
 
 # Main logic for prediction
@@ -188,11 +186,11 @@ def predict():
     st.write(f"Target Price: {max_ltp}")
 
     # Risk-to-Reward Ratio (RRR)
-    rrr = round((max_ltp - predicted_ltp) / (predicted_ltp - stop_loss), 2)
+    rrr = round((max_ltp - predicted_ltp) / (predicted_ltp - stop_loss), 2) if stop_loss and max_ltp else None
     st.write(f"Risk-to-Reward Ratio (RRR): {rrr}")
 
     # Trading suggestion
-    if rrr > 1:
+    if rrr and rrr > 1:
         st.write("Suggestion: Buy")
     else:
         st.write("Suggestion: Avoid")
