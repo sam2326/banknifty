@@ -7,7 +7,6 @@ from torch.nn.functional import softmax
 import requests
 from textblob import TextBlob
 from datetime import datetime, timedelta
-from pytz import timezone
 
 # Streamlit UI setup
 st.set_page_config(page_title="Trading Predictions", layout="wide")
@@ -70,12 +69,10 @@ def fetch_sp500_data():
         st.write(f"Error fetching S&P 500 data: {e}")
         return None
 
-# Your NewsAPI key (Replace with your actual NewsAPI key)
-NEWSAPI_KEY = "990f863a4f65430a99f9b0cac257f432"  # Replace with your actual NewsAPI key
-
-# Function to get news sentiment for a given index/stock using NewsAPI
-def get_news_sentiment(ticker_name):
-    url = f'https://newsapi.org/v2/everything?q={ticker_name} OR RBI OR "interest rates" OR "monetary policy" OR "banking sector" OR "GDP growth" OR "inflation" OR "earnings report" OR "trade wars" OR "interest rate hikes" OR "acquisitions" OR "merger" OR "quarterly results"&apiKey={NEWSAPI_KEY}'
+# Function to get news sentiment for a given index/stock from NewsAPI
+def get_news_sentiment_newsapi(ticker_name):
+    api_key = "990f863a4f65430a99f9b0cac257f432"  # Your NewsAPI key
+    url = f'https://newsapi.org/v2/everything?q={ticker_name} OR RBI OR "interest rates" OR "monetary policy" OR "banking sector" OR "GDP growth" OR "inflation" OR "earnings report" OR "trade wars" OR "interest rate hikes" OR "acquisitions" OR "merger" OR "quarterly results"&apiKey={api_key}'
 
     try:
         response = requests.get(url)
@@ -91,31 +88,29 @@ def get_news_sentiment(ticker_name):
             st.write("Warning: No articles found.")
             return 0
     except requests.exceptions.RequestException as e:
-        st.write(f"Error fetching news from NewsAPI: {e}")
+        st.write(f"Error fetching news: {e}")
         return 0  # Return 0 if there's an error
 
-# Your SerpAPI key for Google News (Replace with your actual SerpAPI key)
-SERPAPI_KEY = "c4e807b7fe597e3421fba24db713faf8f6242eff6825b335936d662dc5dde10f"  # Replace with your actual SerpAPI key
-
-# Function to get news sentiment from Google News using SerpAPI
-def get_google_news_sentiment(ticker_name):
-    url = f'https://serpapi.com/search?engine=google_finance&q={ticker_name} OR RBI OR "interest rates" OR "monetary policy" OR "banking sector" OR "GDP growth" OR "inflation" OR "earnings report" OR "trade wars" OR "interest rate hikes" OR "acquisitions" OR "merger" OR "quarterly results"&api_key={SERPAPI_KEY}'
+# Function to get news sentiment for a given index/stock from Google News (SerpAPI)
+def get_news_sentiment_google(ticker_name):
+    serpapi_key = "c4e807b7fe597e3421fba24db713faf8f6242eff6825b335936d662dc5dde10f"  # Your SerpAPI key
+    url = f"https://serpapi.com/search?engine=google_finance&q={ticker_name} OR RBI OR 'interest rates' OR 'monetary policy' OR 'banking sector' OR 'GDP growth' OR 'inflation' OR 'earnings report' OR 'trade wars' OR 'interest rate hikes' OR 'acquisitions' OR 'merger' OR 'quarterly results'&api_key={serpapi_key}"
 
     try:
         response = requests.get(url)
         response.raise_for_status()  # Ensure the request was successful
         data = response.json()
 
-        if 'news_results' in data:
+        if 'news_results' in data and data['news_results']:
             articles = data['news_results']
             headlines = [article['title'] for article in articles if article['title']]
             sentiment_score = get_sentiment_score(headlines)
             return sentiment_score
         else:
-            st.write("Warning: No articles found in Google News.")
+            st.write("Warning: No articles found.")
             return 0
     except requests.exceptions.RequestException as e:
-        st.write(f"Error fetching Google News from SerpAPI: {e}")
+        st.write(f"Error fetching Google News: {e}")
         return 0  # Return 0 if there's an error
 
 # Function to calculate sentiment score from headlines
@@ -130,25 +125,28 @@ def get_sentiment_score(news_headlines):
     
     return round(sentiment_score / len(news_headlines), 2) if news_headlines else 0
 
-# Function to convert UTC time to IST (Indian Standard Time)
-def convert_to_ist(timestamp):
-    utc_time = datetime.strptime(timestamp, "%Y-%m-%dT%H:%M:%S%z")
-    ist_timezone = timezone('Asia/Kolkata')
-    ist_time = utc_time.astimezone(ist_timezone)
-    return ist_time.strftime("%Y-%m-%d %H:%M:%S")
+# Function to predict LTP for the selected ticker
+def predict_ltp(current_ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score):
+    sentiment_factor = india_vix * 0.1 + sentiment_score * 0.05
+    strike_impact = (strike_price - ticker_price) * (0.01 if strike_price < ticker_price else -0.01)
+    sp500_impact = sp500_price * 0.005
+    random_factor = random.uniform(-0.01, 0.02)
+    predicted_ltp = current_ltp + sentiment_factor + strike_impact + sp500_impact + (current_ltp * random_factor)
+    return round(predicted_ltp, 2)
 
-# Function to display sentiment score with timestamp in IST
+# Function to display sentiment score with timestamp
 def display_sentiment_with_time():
-    google_news_sentiment = get_google_news_sentiment(ticker_name)  # Get sentiment from Google News
-    newsapi_sentiment = get_news_sentiment(ticker_name)  # Get sentiment from NewsAPI
+    # Fetch sentiment from both APIs
+    sentiment_score_newsapi = get_news_sentiment_newsapi(ticker_name)
+    sentiment_score_google = get_news_sentiment_google(ticker_name)
     
-    sentiment_score = (google_news_sentiment + newsapi_sentiment) / 2  # Combine the two sentiment scores (mean)
+    # Average the sentiment scores
+    sentiment_score = (sentiment_score_newsapi + sentiment_score_google) / 2
     
-    timestamp = datetime.now().strftime("%Y-%m-%dT%H:%M:%S%z")  # Current timestamp in UTC
-    ist_timestamp = convert_to_ist(timestamp)  # Convert to IST
-    st.write(f"Sentiment Score: {sentiment_score} (Last updated: {ist_timestamp})")
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")  # Get timestamp
+    st.write(f"Sentiment Score based on news: {sentiment_score} (Last updated: {timestamp})")
     
-    return sentiment_score  # Return combined sentiment score for use in the prediction
+    return sentiment_score  # Return sentiment score for use in the prediction
 
 # Main logic for prediction
 def predict():
@@ -190,15 +188,15 @@ def predict():
     st.write(f"Target Price: {max_ltp}")
 
     # Risk-to-Reward Ratio (RRR)
-    rrr = round((max_ltp - predicted_ltp) / (predicted_ltp - stop_loss), 2) if stop_loss and max_ltp else None
+    rrr = round((max_ltp - predicted_ltp) / (predicted_ltp - stop_loss), 2)
     st.write(f"Risk-to-Reward Ratio (RRR): {rrr}")
 
     # Trading suggestion
-    if rrr and rrr > 1:
-        st.write("Suggestion: Consider trading, as RRR > 1.")
+    if rrr > 1:
+        st.write("Suggestion: Buy")
     else:
-        st.write("Suggestion: Avoid trading, as RRR < 1.")
+        st.write("Suggestion: Avoid")
 
-# Add button for predictions
-if st.button("Get Predictions"):
+# Add a button to trigger prediction manually
+if st.button("Get Prediction"):
     predict()
