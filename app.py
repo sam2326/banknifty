@@ -7,6 +7,8 @@ from torch.nn.functional import softmax
 import requests
 from textblob import TextBlob
 from datetime import datetime, timedelta
+from pytz import timezone  # For IST conversion
+import json
 
 # Streamlit UI setup
 st.set_page_config(page_title="Trading Predictions", layout="wide")
@@ -69,7 +71,28 @@ def fetch_sp500_data():
         st.write(f"Error fetching S&P 500 data: {e}")
         return None
 
-# Function to get news sentiment for a given index/stock
+# Function to fetch news sentiment from Google News using SerpAPI
+def get_google_news_sentiment(ticker_name):
+    api_key = "your_serpapi_key_here"  # Replace with your SerpAPI key
+    url = f'https://serpapi.com/search?engine=google_finance&q={ticker_name} OR RBI OR "interest rates" OR "monetary policy" OR "banking sector" OR "GDP growth" OR "inflation" OR "earnings report" OR "trade wars" OR "interest rate hikes" OR "acquisitions" OR "merger" OR "quarterly results"&api_key={api_key}'
+    
+    try:
+        response = requests.get(url)
+        response.raise_for_status()  # Ensure the request was successful
+        data = response.json()
+
+        if 'news_results' in data and data['news_results']:
+            headlines = [article['title'] for article in data['news_results'] if article['title']]
+            sentiment_score = get_sentiment_score(headlines)
+            return sentiment_score
+        else:
+            st.write("Warning: No articles found in Google News.")
+            return 0
+    except requests.exceptions.RequestException as e:
+        st.write(f"Error fetching Google News: {e}")
+        return 0  # Return 0 if there's an error
+
+# Function to fetch news sentiment from NewsAPI
 def get_news_sentiment(ticker_name):
     api_key = "990f863a4f65430a99f9b0cac257f432"  # Your NewsAPI key
     url = f'https://newsapi.org/v2/everything?q={ticker_name} OR RBI OR "interest rates" OR "monetary policy" OR "banking sector" OR "GDP growth" OR "inflation" OR "earnings report" OR "trade wars" OR "interest rate hikes" OR "acquisitions" OR "merger" OR "quarterly results"&apiKey={api_key}'
@@ -85,7 +108,7 @@ def get_news_sentiment(ticker_name):
             sentiment_score = get_sentiment_score(headlines)
             return sentiment_score
         else:
-            st.write("Warning: No articles found.")
+            st.write("Warning: No articles found in NewsAPI.")
             return 0
     except requests.exceptions.RequestException as e:
         st.write(f"Error fetching news: {e}")
@@ -103,6 +126,31 @@ def get_sentiment_score(news_headlines):
     
     return round(sentiment_score / len(news_headlines), 2) if news_headlines else 0
 
+# Function to convert timestamp to IST
+def convert_to_ist(timestamp):
+    # Convert timestamp to IST (Indian Standard Time)
+    utc_time = datetime.strptime(timestamp, "%Y-%m-%dT%H:%M:%S%z")
+    ist = timezone('Asia/Kolkata')
+    ist_time = utc_time.astimezone(ist)
+    return ist_time.strftime("%Y-%m-%d %H:%M:%S")
+
+# Function to display sentiment from both sources with timestamps
+def display_sentiment_with_time():
+    # Fetch sentiment from both Google News and NewsAPI
+    google_sentiment_score = get_google_news_sentiment(ticker_name)
+    newsapi_sentiment_score = get_news_sentiment(ticker_name)
+    
+    # Get current timestamp in IST
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    ist_timestamp = convert_to_ist(timestamp)
+    
+    st.write(f"Google News Sentiment Score: {google_sentiment_score} (Last updated: {ist_timestamp})")
+    st.write(f"NewsAPI Sentiment Score: {newsapi_sentiment_score} (Last updated: {ist_timestamp})")
+    
+    # Average sentiment score from both sources
+    avg_sentiment_score = (google_sentiment_score + newsapi_sentiment_score) / 2
+    return avg_sentiment_score
+
 # Function to predict LTP for the selected ticker
 def predict_ltp(current_ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score):
     sentiment_factor = india_vix * 0.1 + sentiment_score * 0.05
@@ -111,13 +159,6 @@ def predict_ltp(current_ltp, ticker_price, strike_price, india_vix, sp500_price,
     random_factor = random.uniform(-0.01, 0.02)
     predicted_ltp = current_ltp + sentiment_factor + strike_impact + sp500_impact + (current_ltp * random_factor)
     return round(predicted_ltp, 2)
-
-# Function to display sentiment score with timestamp
-def display_sentiment_with_time():
-    sentiment_score = get_news_sentiment(ticker_name)  # Fetch news sentiment
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")  # Get timestamp
-    st.write(f"Sentiment Score: {sentiment_score} (Last updated: {timestamp})")
-    return sentiment_score  # Return sentiment score for use in the prediction
 
 # Main logic for prediction
 def predict():
@@ -144,7 +185,7 @@ def predict():
     else:
         st.write(f"Current S&P 500 price: {sp500_price}")
 
-    # Fetch news sentiment and display it with the timestamp
+    # Fetch and display sentiment with timestamp
     sentiment_score = display_sentiment_with_time()
 
     # Predict LTP
