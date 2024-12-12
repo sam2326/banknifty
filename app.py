@@ -117,6 +117,15 @@ def get_sentiment_score(news_headlines):
             st.write(f"Error analyzing sentiment for headline: {headline}. Error: {e}")
     return round(sentiment_score / len(news_headlines), 2) if news_headlines else 0
 
+# Function to calculate sentiment adjustment factor
+def calculate_sentiment_adjustment(sentiment_score, market_trend):
+    if market_trend == "up":
+        return sentiment_score * 0.02
+    elif market_trend == "down":
+        return sentiment_score * -0.03
+    else:
+        return sentiment_score * 0.01
+
 # Enhanced prediction model
 def predict_ltp(current_ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score, market_trend):
     trend_factor = -0.05 if market_trend == "down" else 0.05 if market_trend == "up" else 0
@@ -126,13 +135,6 @@ def predict_ltp(current_ltp, ticker_price, strike_price, india_vix, sp500_price,
     random_factor = random.uniform(-0.01, 0.02)
     predicted_ltp = current_ltp + trend_factor + sentiment_factor + strike_impact + sp500_impact + (current_ltp * random_factor)
     return round(predicted_ltp, 2)
-
-# Display sentiment with timestamp
-def display_sentiment_with_time():
-    sentiment_score = get_news_sentiment(ticker_name)
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    st.write(f"Sentiment Score: {sentiment_score} (Last updated: {timestamp})")
-    return sentiment_score
 
 # Risk-to-Reward adjustments
 def calculate_risk_reward(predicted_ltp, risk_percent, profit_percent, market_trend):
@@ -167,7 +169,7 @@ def predict():
     market_trend = determine_market_trend(ticker_symbol)
     st.write(f"Market Trend: {market_trend}")
 
-    sentiment_score = display_sentiment_with_time()
+    sentiment_score = get_news_sentiment(ticker_name)
 
     predicted_ltp = predict_ltp(ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score, market_trend)
     st.write(f"Predicted LTP for next day: {predicted_ltp}")
