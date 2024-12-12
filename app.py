@@ -6,7 +6,7 @@ from transformers import BertTokenizer, BertForSequenceClassification
 from torch.nn.functional import softmax
 import requests
 from textblob import TextBlob
-from datetime import datetime, timedelta
+from datetime import datetime
 from serpapi import GoogleSearch
 
 # Streamlit UI setup
@@ -39,7 +39,7 @@ profit_percent = st.sidebar.number_input("Enter Profit Percentage (%)", min_valu
 tokenizer = BertTokenizer.from_pretrained('yiyanghkust/finbert-tone', do_lower_case=False)
 model = BertForSequenceClassification.from_pretrained('yiyanghkust/finbert-tone')
 
-# Function to fetch news headlines using SerpAPI
+# Function to fetch news headlines using requests
 def fetch_serpapi_news(ticker_name):
     params = {
         "engine": "google_news",
@@ -47,11 +47,15 @@ def fetch_serpapi_news(ticker_name):
         "api_key": "3e07a371a85442d6bb9740ebe7b0fbb0dec5330512554095910ffa51c6cee2d2",
     }
     try:
-        search = GoogleSearch(params)
-        results = search.get_dict()
-        articles = results.get('articles', [])
-        headlines = [article['title'] for article in articles if article.get('title')]
-        return headlines
+        response = requests.get("https://serpapi.com/search", params=params)
+        if response.status_code == 200:
+            results = response.json()
+            articles = results.get('articles', [])
+            headlines = [article['title'] for article in articles if article.get('title')]
+            return headlines
+        else:
+            st.write(f"Error fetching news using SerpAPI: HTTP {response.status_code}")
+            return []
     except Exception as e:
         st.write(f"Error fetching news using SerpAPI: {e}")
         return []
@@ -67,39 +71,6 @@ def get_sentiment_score(news_headlines):
             st.write(f"Error analyzing sentiment for headline: {headline}. Error: {e}")
     
     return round(sentiment_score / len(news_headlines), 2) if news_headlines else 0
-
-# Function to fetch Google Trends data using SerpAPI
-def fetch_search_trends(ticker_name):
-    params = {
-        "engine": "google",
-        "q": ticker_name,
-        "api_key": "3e07a371a85442d6bb9740ebe7b0fbb0dec5330512554095910ffa51c6cee2d2",
-    }
-    try:
-        search = GoogleSearch(params)
-        results = search.get_dict()
-        search_volume = results.get('search_information', {}).get('total_results', 0)
-        return search_volume
-    except Exception as e:
-        st.write(f"Error fetching search trends using SerpAPI: {e}")
-        return 0
-
-# Function to fetch competitor insights using SerpAPI
-def fetch_competitor_data(ticker_name):
-    params = {
-        "engine": "google_finance",
-        "q": f"{ticker_name} competitors",
-        "api_key": "3e07a371a85442d6bb9740ebe7b0fbb0dec5330512554095910ffa51c6cee2d2",
-    }
-    try:
-        search = GoogleSearch(params)
-        results = search.get_dict()
-        competitors = results.get('competitor_stocks', [])
-        competitor_prices = {c['symbol']: c['price'] for c in competitors}
-        return competitor_prices
-    except Exception as e:
-        st.write(f"Error fetching competitor data using SerpAPI: {e}")
-        return {}
 
 # Function to fetch data for selected ticker
 def fetch_ticker_data(ticker):
@@ -123,13 +94,12 @@ def fetch_sp500_data():
         return None
 
 # Function to predict LTP for the selected ticker
-def predict_ltp(current_ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score, search_volume):
+def predict_ltp(current_ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score):
     sentiment_factor = india_vix * 0.1 + sentiment_score * 0.05
-    trend_factor = search_volume * 0.00001
     strike_impact = (strike_price - ticker_price) * (0.01 if strike_price < ticker_price else -0.01)
     sp500_impact = sp500_price * 0.005
     random_factor = random.uniform(-0.01, 0.02)
-    predicted_ltp = current_ltp + sentiment_factor + trend_factor + strike_impact + sp500_impact + (current_ltp * random_factor)
+    predicted_ltp = current_ltp + sentiment_factor + strike_impact + sp500_impact + (current_ltp * random_factor)
     return round(predicted_ltp, 2)
 
 # Main logic for prediction
@@ -162,12 +132,8 @@ def predict():
     sentiment_score = get_sentiment_score(news_headlines)
     st.write(f"News Sentiment Score: {sentiment_score}")
 
-    # Fetch search trends
-    search_volume = fetch_search_trends(ticker_name)
-    st.write(f"Google Search Volume: {search_volume}")
-
     # Predict LTP
-    predicted_ltp = predict_ltp(ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score, search_volume)
+    predicted_ltp = predict_ltp(ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score)
     st.write(f"Predicted LTP for next day: {predicted_ltp}")
 
     # Stop Loss and Max LTP
@@ -186,13 +152,6 @@ def predict():
         st.write("Suggestion: Buy")
     else:
         st.write("Suggestion: Avoid")
-
-    # Display competitor data
-    competitor_data = fetch_competitor_data(ticker_name)
-    if competitor_data:
-        st.write("Competitor Performance:")
-        for symbol, price in competitor_data.items():
-            st.write(f"{symbol}: {price}")
 
 # Add a button to trigger prediction manually
 if st.button("Get Prediction"):
