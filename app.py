@@ -72,7 +72,7 @@ def fetch_sp500_data():
 # Function to get Google News sentiment for a given index/stock from SerpAPI
 def get_google_news_sentiment(ticker_name):
     api_key = "c4e807b7fe597e3421fba24db713faf8f6242eff6825b335936d662dc5dde10f"  # Your SerpAPI key
-    url = f"https://serpapi.com/search?engine=google_news&q={ticker_name}&api_key={api_key}"
+    url = f"https://serpapi.com/search?engine=google_news&q={ticker_name}&api_key={api_key}&num=5"  # Limit to 5 latest news results
 
     try:
         response = requests.get(url)
@@ -107,16 +107,16 @@ def get_sentiment_score(news_headlines):
 # Function to fetch Google Finance data using SerpAPI
 def fetch_google_finance_data(ticker):
     api_key = "c4e807b7fe597e3421fba24db713faf8f6242eff6825b335936d662dc5dde10f"  # Your SerpAPI key
-    url = f"https://serpapi.com/search?engine=google_finance&q={ticker}&api_key={api_key}&output=json"
-    
+    url = f"https://serpapi.com/search?engine=google_finance&q={ticker}&api_key={api_key}"
+
     try:
         response = requests.get(url)
         response.raise_for_status()  # Ensure successful request
         data = response.json()
         
         # Parse relevant data
-        if data.get("market_summary"):
-            market_summary = data["market_summary"]
+        if 'market_summary' in data:
+            market_summary = data['market_summary']
             current_price = market_summary.get("price", "N/A")
             market_cap = market_summary.get("market_cap", "N/A")
             return current_price, market_cap
