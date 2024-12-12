@@ -198,3 +198,7 @@ def predict():
         st.write("Suggestion: Consider trading, as RRR > 1.")
     else:
         st.write("Suggestion: Avoid trading, as RRR < 1.")
+
+# Add button for predictions
+if st.button("Get Predictions"):
+    predict()
