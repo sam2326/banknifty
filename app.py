@@ -72,7 +72,7 @@ def fetch_sp500_data():
 # Function to get news sentiment for a given index/stock
 def get_news_sentiment(ticker_name):
     api_key = "990f863a4f65430a99f9b0cac257f432"  # Your NewsAPI key
-    url = f'https://newsapi.org/v2/everything?q={ticker_name} OR RBI OR "interest rates" OR "monetary policy" OR "banking sector" OR "GDP growth" OR "inflation"&apiKey={api_key}'
+    url = f'https://newsapi.org/v2/everything?q={ticker_name} OR RBI OR "interest rates" OR "monetary policy"&apiKey={api_key}'
 
     try:
         response = requests.get(url)
@@ -118,6 +118,13 @@ def determine_market_trend():
     except Exception as e:
         st.write(f"Error determining market trend: {e}")
         return "neutral"
+
+# Function to display sentiment score with timestamp
+def display_sentiment_with_time():
+    sentiment_score = get_news_sentiment(ticker_name)  # Fetch news sentiment
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")  # Get timestamp
+    st.write(f"Sentiment Score: {sentiment_score} (Last updated: {timestamp})")
+    return sentiment_score  # Return sentiment score for use in the prediction
 
 # Enhanced prediction function
 def predict_ltp(current_ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score, market_trend):
