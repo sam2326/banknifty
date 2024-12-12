@@ -103,38 +103,6 @@ def get_sentiment_score(news_headlines):
     
     return round(sentiment_score / len(news_headlines), 2) if news_headlines else 0
 
-# Function to aggregate sentiment from both FinBERT and RoBERTa
-def aggregate_sentiment(finbert_text, roberta_text):
-    finbert_sentiment = get_financial_sentiment(finbert_text)  # FinBERT sentiment
-    roberta_sentiment = get_roberta_sentiment(roberta_text)  # RoBERTa sentiment
-
-    # Convert string sentiments to numeric values for computation
-    sentiment_priority = {"Negative": -1, "Neutral": 0, "Positive": 1}
-    finbert_numeric = sentiment_priority[finbert_sentiment]
-    roberta_numeric = sentiment_priority[roberta_sentiment]
-
-    # Combine the numeric values
-    combined_score = (finbert_numeric + roberta_numeric) / 2  # Average sentiment score
-    if combined_score > 0:
-        combined_sentiment = "Positive"
-    elif combined_score == 0:
-        combined_sentiment = "Neutral"
-    else:
-        combined_sentiment = "Negative"
-
-    return combined_sentiment, combined_score  # Return both sentiment and numeric score
-
-# Update the function to return numeric sentiment
-def display_combined_sentiment_with_time():
-    sentiment_score = get_news_sentiment(ticker_name)
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")  # Get timestamp
-
-    # Get combined sentiment (using both FinBERT and RoBERTa)
-    combined_sentiment, numeric_sentiment_score = aggregate_sentiment(str(sentiment_score), str(sentiment_score))
-    st.write(f"Combined Sentiment Score: {combined_sentiment} (Last updated: {timestamp})")
-
-    return numeric_sentiment_score  # Return numeric sentiment for use in prediction
-
 # Function to predict LTP for the selected ticker
 def predict_ltp(current_ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score):
     sentiment_factor = india_vix * 0.1 + sentiment_score * 0.05
@@ -143,6 +111,13 @@ def predict_ltp(current_ltp, ticker_price, strike_price, india_vix, sp500_price,
     random_factor = random.uniform(-0.01, 0.02)
     predicted_ltp = current_ltp + sentiment_factor + strike_impact + sp500_impact + (current_ltp * random_factor)
     return round(predicted_ltp, 2)
+
+# Function to display sentiment score with timestamp
+def display_sentiment_with_time():
+    sentiment_score = get_news_sentiment(ticker_name)  # Fetch news sentiment
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")  # Get timestamp
+    st.write(f"Sentiment Score: {sentiment_score} (Last updated: {timestamp})")
+    return sentiment_score  # Return sentiment score for use in the prediction
 
 # Main logic for prediction
 def predict():
@@ -170,7 +145,7 @@ def predict():
         st.write(f"Current S&P 500 price: {sp500_price}")
 
     # Fetch news sentiment and display it with the timestamp
-    sentiment_score = display_combined_sentiment_with_time()
+    sentiment_score = display_sentiment_with_time()
 
     # Predict LTP
     predicted_ltp = predict_ltp(ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score)
