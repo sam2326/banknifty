@@ -6,7 +6,7 @@ from transformers import BertTokenizer, BertForSequenceClassification
 from torch.nn.functional import softmax
 import requests
 from textblob import TextBlob
-from datetime import datetime, timedelta
+from datetime import datetime
 
 # Streamlit UI setup
 st.set_page_config(page_title="Trading Predictions", layout="wide")
@@ -34,9 +34,19 @@ ltp = st.sidebar.number_input("Enter Current LTP", min_value=0.0, value=765.50, 
 risk_percent = st.sidebar.number_input("Enter Risk Percentage (%)", min_value=0.0, max_value=100.0, value=1.0, step=0.1)
 profit_percent = st.sidebar.number_input("Enter Profit Percentage (%)", min_value=0.0, max_value=100.0, value=5.0, step=0.1)
 
-# Load FinBERT for Sentiment Analysis (Not used anymore directly)
+# Load FinBERT for Sentiment Analysis
 tokenizer = BertTokenizer.from_pretrained('yiyanghkust/finbert-tone', do_lower_case=False)
 model = BertForSequenceClassification.from_pretrained('yiyanghkust/finbert-tone')
+
+# Function to get financial sentiment using FinBERT
+def get_financial_sentiment(text):
+    inputs = tokenizer(text, return_tensors="pt", truncation=True, padding=True)
+    outputs = model(**inputs)
+    probs = softmax(outputs.logits, dim=-1)
+    sentiment = torch.argmax(probs).item()
+
+    sentiment_map = {0: "Negative", 1: "Neutral", 2: "Positive"}
+    return sentiment_map[sentiment]
 
 # Function to fetch data for selected ticker
 def fetch_ticker_data(ticker):
@@ -59,44 +69,28 @@ def fetch_sp500_data():
         st.write(f"Error fetching S&P 500 data: {e}")
         return None
 
-# Function to get Google News sentiment for a given ticker using SerpAPI
-def fetch_google_news(ticker_name, serpapi_key):
-    url = f'https://serpapi.com/search?q={ticker_name}&tbm=nws&api_key={serpapi_key}'
+# Function to get Google News sentiment for a given index/stock from SerpAPI
+def get_google_news_sentiment(ticker_name):
+    api_key = "c4e807b7fe597e3421fba24db713faf8f6242eff6825b335936d662dc5dde10f"  # Your SerpAPI key
+    url = f"https://serpapi.com/search?engine=google_news&q={ticker_name}&api_key={api_key}"
+
     try:
         response = requests.get(url)
-        response.raise_for_status()
+        response.raise_for_status()  # Ensure the request was successful
         data = response.json()
 
-        if 'news_results' in data:
-            articles = data['news_results']
-            headlines = [article['title'] for article in articles if article['title']]
+        if 'news_results' in data and data['news_results']:
+            news_articles = data['news_results']
+            headlines = [article['title'] for article in news_articles if article['title']]
             sentiment_score = get_sentiment_score(headlines)
-            return sentiment_score
+            last_news_timestamp = data['news_results'][0]['date']  # Get timestamp of last news
+            return sentiment_score, last_news_timestamp
         else:
-            st.write("Warning: No Google News articles found.")
-            return 0
+            st.write("Warning: No news articles found.")
+            return 0, None
     except requests.exceptions.RequestException as e:
-        st.write(f"Error fetching Google News: {e}")
-        return 0
-
-# Function to fetch Google Finance data using SerpAPI
-def fetch_google_finance(ticker_name, serpapi_key):
-    url = f'https://serpapi.com/search?q={ticker_name}+site:finance.google.com&api_key={serpapi_key}'
-    try:
-        response = requests.get(url)
-        response.raise_for_status()
-        data = response.json()
-
-        if 'stock_results' in data:
-            stock_data = data['stock_results'][0]
-            current_price = stock_data['price']
-            return current_price
-        else:
-            st.write("Warning: No Google Finance data found.")
-            return None
-    except requests.exceptions.RequestException as e:
-        st.write(f"Error fetching Google Finance data: {e}")
-        return None
+        st.write(f"Error fetching news: {e}")
+        return 0, None  # Return 0 if there's an error
 
 # Function to calculate sentiment score from headlines
 def get_sentiment_score(news_headlines):
@@ -107,7 +101,31 @@ def get_sentiment_score(news_headlines):
                 sentiment_score += TextBlob(headline).sentiment.polarity
         except Exception as e:
             st.write(f"Error analyzing sentiment for headline: {headline}. Error: {e}")
+    
     return round(sentiment_score / len(news_headlines), 2) if news_headlines else 0
+
+# Function to fetch Google Finance data using SerpAPI
+def fetch_google_finance_data(ticker):
+    api_key = "c4e807b7fe597e3421fba24db713faf8f6242eff6825b335936d662dc5dde10f"  # Your SerpAPI key
+    url = f"https://serpapi.com/search?engine=google_finance&q={ticker}&api_key={api_key}&output=json"
+    
+    try:
+        response = requests.get(url)
+        response.raise_for_status()  # Ensure successful request
+        data = response.json()
+        
+        # Parse relevant data
+        if data.get("market_summary"):
+            market_summary = data["market_summary"]
+            current_price = market_summary.get("price", "N/A")
+            market_cap = market_summary.get("market_cap", "N/A")
+            return current_price, market_cap
+        else:
+            st.write("No market summary data found for Google Finance.")
+            return None, None
+    except requests.exceptions.RequestException as e:
+        st.write(f"Error fetching Google Finance data: {e}")
+        return None, None
 
 # Function to predict LTP for the selected ticker
 def predict_ltp(current_ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score):
@@ -142,20 +160,22 @@ def predict():
     else:
         st.write(f"Current S&P 500 price: {sp500_price}")
 
-    # Fetch Google News sentiment
-    serpapi_key = "c4e807b7fe597e3421fba24db713faf8f6242eff6825b335936d662dc5dde10f"  # Your SerpAPI key
-    google_news_sentiment_score = fetch_google_news(ticker_name, serpapi_key)
-    st.write(f"Google News Sentiment Score: {google_news_sentiment_score}")
-
     # Fetch Google Finance data
-    google_finance_price = fetch_google_finance(ticker_name, serpapi_key)
-    if google_finance_price:
-        st.write(f"Google Finance Current Price: {google_finance_price}")
+    google_finance_price, market_cap = fetch_google_finance_data(ticker_name)
+    if google_finance_price is None:
+        st.warning(f"Could not fetch Google Finance data for {ticker_name}.")
     else:
-        google_finance_price = ticker_price  # Use Yahoo Finance price if Google Finance data is unavailable
+        st.write(f"Current Google Finance price for {ticker_name}: {google_finance_price}")
+        st.write(f"Market Cap from Google Finance: {market_cap}")
+        
+    # Fetch Google News sentiment
+    sentiment_score, last_news_timestamp = get_google_news_sentiment(ticker_name)
+    if last_news_timestamp:
+        st.write(f"Last news pulled at: {last_news_timestamp}")
+    st.write(f"Sentiment Score based on news: {sentiment_score}")
 
-    # Predict LTP using additional data (including Google News sentiment)
-    predicted_ltp = predict_ltp(ltp, google_finance_price, strike_price, india_vix, sp500_price, google_news_sentiment_score)
+    # Predict LTP
+    predicted_ltp = predict_ltp(ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score)
     st.write(f"Predicted LTP for next day: {predicted_ltp}")
 
     # Stop Loss and Max LTP
