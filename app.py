@@ -70,33 +70,10 @@ def fetch_sp500_data():
         st.write(f"Error fetching S&P 500 data: {e}")
         return None
 
-# Function to fetch Google Finance data using SerpAPI
-def fetch_google_finance_data(ticker):
-    api_key = "c4e807b7fe597e3421fba24db713faf8f6242eff6825b335936d662dc5dde10f"  # Your SerpAPI key
-    url = f"https://serpapi.com/search?engine=google_finance&q={ticker}&api_key={api_key}"
-
-    try:
-        response = requests.get(url)
-        response.raise_for_status()  # Ensure successful request
-        data = response.json()
-
-        # Parse relevant data from the response
-        if 'market_summary' in data:
-            market_summary = data['market_summary']
-            current_price = market_summary.get("price", "N/A")
-            market_cap = market_summary.get("market_cap", "N/A")
-            return current_price, market_cap
-        else:
-            st.write(f"Warning: No market summary data found for {ticker}.")
-            return None, None
-    except requests.exceptions.RequestException as e:
-        st.write(f"Error fetching Google Finance data for {ticker}: {e}")
-        return None, None  # Return None in case of error
-
-# Function to get news sentiment for a given index/stock
+# Function to fetch news sentiment for a given index/stock using Yahoo Finance
 def get_news_sentiment(ticker_name):
     api_key = "c4e807b7fe597e3421fba24db713faf8f6242eff6825b335936d662dc5dde10f"  # Your SerpAPI key
-    url = f'https://newsapi.org/v2/everything?q={ticker_name} OR RBI OR "interest rates" OR "monetary policy" OR "banking sector" OR "GDP growth" OR "inflation" OR "earnings report" OR "trade wars" OR "interest rate hikes" OR "acquisitions" OR "merger" OR "quarterly results"&apiKey={api_key}'
+    url = f'https://serpapi.com/search?engine=google_news&q={ticker_name}&api_key={api_key}'
 
     try:
         response = requests.get(url)
@@ -161,12 +138,7 @@ def predict():
     else:
         st.write(f"Current S&P 500 price: {sp500_price}")
 
-    # Fetch Google Finance data
-    google_finance_price, _ = fetch_google_finance_data(ticker_name)
-    if google_finance_price:
-        st.write(f"Google Finance price for {ticker_name}: {google_finance_price}")
-
-    # Fetch news sentiment
+    # Fetch news sentiment using Google News API
     sentiment_score, last_news_pulled = get_news_sentiment(ticker_name)
     if last_news_pulled:
         st.write(f"Last news pulled at: {last_news_pulled}")
@@ -187,12 +159,5 @@ def predict():
     rrr = round((max_ltp - predicted_ltp) / (predicted_ltp - stop_loss), 2) if stop_loss and max_ltp else None
     st.write(f"Risk-to-Reward Ratio (RRR): {rrr}")
 
-    # Trading suggestion
-    if rrr and rrr > 1:
-        st.write("Suggestion: Buy")
-    else:
-        st.write("Suggestion: Avoid")
-
-# Add a button to trigger prediction manually
-if st.button("Get Prediction"):
-    predict()
+# Run the prediction
+predict()
