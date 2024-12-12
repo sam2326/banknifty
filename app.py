@@ -6,7 +6,7 @@ from transformers import BertTokenizer, BertForSequenceClassification
 from torch.nn.functional import softmax
 import requests
 from textblob import TextBlob
-from datetime import datetime, timedelta
+from datetime import datetime
 
 # Streamlit UI setup
 st.set_page_config(page_title="Trading Predictions", layout="wide")
@@ -28,9 +28,9 @@ st.sidebar.title("User Inputs")
 ticker_name = st.sidebar.selectbox("Select Ticker", list(SUPPORTED_TICKERS.keys()))
 ticker_symbol = SUPPORTED_TICKERS[ticker_name]
 expiry_date = st.sidebar.date_input("Select Expiry Date", min_value=datetime.today())
-strike_price = st.sidebar.number_input("Enter Strike Price", min_value=0, value=53500)
+strike_price = st.sidebar.number_input("Enter Strike Price", min_value=0, value=53700)
 option_type = st.sidebar.selectbox("Select Option Type", ["Call", "Put"])
-ltp = st.sidebar.number_input("Enter Current LTP", min_value=0.0, value=516.00, step=0.05)
+ltp = st.sidebar.number_input("Enter Current LTP", min_value=0.0, value=765.50, step=0.05)
 risk_percent = st.sidebar.number_input("Enter Risk Percentage (%)", min_value=0.0, max_value=100.0, value=1.0, step=0.1)
 profit_percent = st.sidebar.number_input("Enter Profit Percentage (%)", min_value=0.0, max_value=100.0, value=5.0, step=0.1)
 
@@ -69,6 +69,21 @@ def fetch_sp500_data():
         st.write(f"Error fetching S&P 500 data: {e}")
         return None
 
+# Function to determine market trend
+def determine_market_trend():
+    try:
+        sp500_data = yf.Ticker("^GSPC").history(period="2d")["Close"]
+        if len(sp500_data) < 2:
+            st.write("Warning: Not enough data to determine market trend. Defaulting to neutral trend.")
+            return "neutral"
+        sp500_previous = sp500_data.iloc[-2]
+        sp500_current = sp500_data.iloc[-1]
+        trend = "down" if sp500_current < sp500_previous else "up"
+        return trend
+    except Exception as e:
+        st.write(f"Error determining market trend: {e}")
+        return "neutral"
+
 # Function to get news sentiment for a given index/stock
 def get_news_sentiment(ticker_name):
     api_key = "990f863a4f65430a99f9b0cac257f432"  # Your NewsAPI key
@@ -105,14 +120,12 @@ def get_sentiment_score(news_headlines):
 
 # Function to predict LTP for the selected ticker
 def predict_ltp(current_ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score, market_trend):
+    trend_factor = 0.01 if market_trend == "up" else -0.01 if market_trend == "down" else 0
     sentiment_factor = india_vix * 0.1 + sentiment_score * 0.05
     strike_impact = (strike_price - ticker_price) * (0.01 if strike_price < ticker_price else -0.01)
     sp500_impact = sp500_price * 0.005
     random_factor = random.uniform(-0.01, 0.02)
-    
-    # Adjust LTP prediction based on market trend
-    market_trend_factor = -0.05 if market_trend == "down" else 0.0
-    predicted_ltp = current_ltp + sentiment_factor + strike_impact + sp500_impact + (current_ltp * random_factor) + market_trend_factor
+    predicted_ltp = current_ltp + trend_factor + sentiment_factor + strike_impact + sp500_impact + (current_ltp * random_factor)
     return round(predicted_ltp, 2)
 
 # Function to display sentiment score with timestamp
@@ -121,16 +134,6 @@ def display_sentiment_with_time():
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")  # Get timestamp
     st.write(f"Sentiment Score: {sentiment_score} (Last updated: {timestamp})")
     return sentiment_score  # Return sentiment score for use in the prediction
-
-# Function to determine the market trend (up/down)
-def determine_market_trend():
-    # We'll use the S&P 500's change over the past few days to determine the market trend
-    sp500_data = fetch_sp500_data()
-    if sp500_data:
-        sp500_previous = yf.Ticker("^GSPC").history(period="2d")["Close"].iloc[-2]
-        trend = "down" if sp500_data < sp500_previous else "up"
-        return trend
-    return "neutral"
 
 # Main logic for prediction
 def predict():
@@ -157,9 +160,9 @@ def predict():
     else:
         st.write(f"Current S&P 500 price: {sp500_price}")
 
-    # Determine market trend (up/down)
+    # Determine market trend
     market_trend = determine_market_trend()
-    st.write(f"Market Trend: {market_trend.capitalize()}")
+    st.write(f"Market Trend: {market_trend}")
 
     # Fetch news sentiment and display it with the timestamp
     sentiment_score = display_sentiment_with_time()
