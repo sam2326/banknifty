@@ -28,9 +28,9 @@ st.sidebar.title("User Inputs")
 ticker_name = st.sidebar.selectbox("Select Ticker", list(SUPPORTED_TICKERS.keys()))
 ticker_symbol = SUPPORTED_TICKERS[ticker_name]
 expiry_date = st.sidebar.date_input("Select Expiry Date", min_value=datetime.today())
-strike_price = st.sidebar.number_input("Enter Strike Price", min_value=0, value=53700)
+strike_price = st.sidebar.number_input("Enter Strike Price", min_value=0, value=53500)
 option_type = st.sidebar.selectbox("Select Option Type", ["Call", "Put"])
-ltp = st.sidebar.number_input("Enter Current LTP", min_value=0.0, value=765.50, step=0.05)
+ltp = st.sidebar.number_input("Enter Current LTP", min_value=0.0, value=516.00, step=0.05)
 risk_percent = st.sidebar.number_input("Enter Risk Percentage (%)", min_value=0.0, max_value=100.0, value=1.0, step=0.1)
 profit_percent = st.sidebar.number_input("Enter Profit Percentage (%)", min_value=0.0, max_value=100.0, value=5.0, step=0.1)
 
@@ -104,12 +104,15 @@ def get_sentiment_score(news_headlines):
     return round(sentiment_score / len(news_headlines), 2) if news_headlines else 0
 
 # Function to predict LTP for the selected ticker
-def predict_ltp(current_ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score):
+def predict_ltp(current_ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score, market_trend):
     sentiment_factor = india_vix * 0.1 + sentiment_score * 0.05
     strike_impact = (strike_price - ticker_price) * (0.01 if strike_price < ticker_price else -0.01)
     sp500_impact = sp500_price * 0.005
     random_factor = random.uniform(-0.01, 0.02)
-    predicted_ltp = current_ltp + sentiment_factor + strike_impact + sp500_impact + (current_ltp * random_factor)
+    
+    # Adjust LTP prediction based on market trend
+    market_trend_factor = -0.05 if market_trend == "down" else 0.0
+    predicted_ltp = current_ltp + sentiment_factor + strike_impact + sp500_impact + (current_ltp * random_factor) + market_trend_factor
     return round(predicted_ltp, 2)
 
 # Function to display sentiment score with timestamp
@@ -118,6 +121,16 @@ def display_sentiment_with_time():
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")  # Get timestamp
     st.write(f"Sentiment Score: {sentiment_score} (Last updated: {timestamp})")
     return sentiment_score  # Return sentiment score for use in the prediction
+
+# Function to determine the market trend (up/down)
+def determine_market_trend():
+    # We'll use the S&P 500's change over the past few days to determine the market trend
+    sp500_data = fetch_sp500_data()
+    if sp500_data:
+        sp500_previous = yf.Ticker("^GSPC").history(period="2d")["Close"].iloc[-2]
+        trend = "down" if sp500_data < sp500_previous else "up"
+        return trend
+    return "neutral"
 
 # Main logic for prediction
 def predict():
@@ -144,11 +157,15 @@ def predict():
     else:
         st.write(f"Current S&P 500 price: {sp500_price}")
 
+    # Determine market trend (up/down)
+    market_trend = determine_market_trend()
+    st.write(f"Market Trend: {market_trend.capitalize()}")
+
     # Fetch news sentiment and display it with the timestamp
     sentiment_score = display_sentiment_with_time()
 
     # Predict LTP
-    predicted_ltp = predict_ltp(ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score)
+    predicted_ltp = predict_ltp(ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score, market_trend)
     st.write(f"Predicted LTP for next day: {predicted_ltp}")
 
     # Stop Loss and Max LTP
