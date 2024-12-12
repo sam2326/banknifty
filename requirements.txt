@@ -13,3 +13,4 @@ plotly
 beautifulsoup4>=4.12.2
 scikit-learn>=1.3.0
 scipy
+serpapi==0.1.5
