@@ -1,6 +1,5 @@
 import yfinance as yf
 import streamlit as st
-import pandas as pd
 import random
 import torch
 from transformers import BertTokenizer, BertForSequenceClassification
@@ -34,7 +33,6 @@ option_type = st.sidebar.selectbox("Select Option Type", ["Call", "Put"])
 ltp = st.sidebar.number_input("Enter Current LTP", min_value=0.0, value=765.50, step=0.05)
 risk_percent = st.sidebar.number_input("Enter Risk Percentage (%)", min_value=0.0, max_value=100.0, value=1.0, step=0.1)
 profit_percent = st.sidebar.number_input("Enter Profit Percentage (%)", min_value=0.0, max_value=100.0, value=5.0, step=0.1)
-uploaded_file = st.sidebar.file_uploader("Upload NSE Option Chain CSV", type="csv")
 
 # Load FinBERT for Sentiment Analysis
 tokenizer = BertTokenizer.from_pretrained('yiyanghkust/finbert-tone', do_lower_case=False)
@@ -46,6 +44,7 @@ def get_financial_sentiment(text):
     outputs = model(**inputs)
     probs = softmax(outputs.logits, dim=-1)
     sentiment = torch.argmax(probs).item()
+
     sentiment_map = {0: "Negative", 1: "Neutral", 2: "Positive"}
     return sentiment_map[sentiment]
 
@@ -72,15 +71,17 @@ def fetch_sp500_data():
 
 # Function to get news sentiment for a given index/stock
 def get_news_sentiment(ticker_name):
-    api_key = "990f863a4f65430a99f9b0cac257f432"
+    api_key = "990f863a4f65430a99f9b0cac257f432"  # Your NewsAPI key
     url = f'https://newsapi.org/v2/everything?q={ticker_name} OR RBI OR "interest rates" OR "monetary policy"&apiKey={api_key}'
 
     try:
         response = requests.get(url)
-        response.raise_for_status()
+        response.raise_for_status()  # Ensure the request was successful
         data = response.json()
+
         if 'articles' in data and data['articles']:
-            headlines = [article['title'] for article in data['articles'] if article['title']]
+            articles = data['articles']
+            headlines = [article['title'] for article in articles if article['title']]
             sentiment_score = get_sentiment_score(headlines)
             return sentiment_score
         else:
@@ -88,7 +89,7 @@ def get_news_sentiment(ticker_name):
             return 0
     except requests.exceptions.RequestException as e:
         st.write(f"Error fetching news: {e}")
-        return 0
+        return 0  # Return 0 if there's an error
 
 # Function to calculate sentiment score from headlines
 def get_sentiment_score(news_headlines):
@@ -99,6 +100,7 @@ def get_sentiment_score(news_headlines):
                 sentiment_score += TextBlob(headline).sentiment.polarity
         except Exception as e:
             st.write(f"Error analyzing sentiment for headline: {headline}. Error: {e}")
+    
     return round(sentiment_score / len(news_headlines), 2) if news_headlines else 0
 
 # Function to determine market trend using moving averages
@@ -119,69 +121,70 @@ def determine_market_trend():
 
 # Function to display sentiment score with timestamp
 def display_sentiment_with_time():
-    sentiment_score = get_news_sentiment(ticker_name)
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    sentiment_score = get_news_sentiment(ticker_name)  # Fetch news sentiment
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")  # Get timestamp
     st.write(f"Sentiment Score: {sentiment_score} (Last updated: {timestamp})")
-    return sentiment_score
+    return sentiment_score  # Return sentiment score for use in the prediction
 
-# Function to load and process option chain CSV
-def load_and_clean_csv(file):
-    try:
-        df = pd.read_csv(file)
-        df.columns = [col.strip().replace("\n", "").replace(" ", "_") for col in df.columns]
-        if not {"STRIKE_", "OPTION_TYPE_", "LTP_"}.issubset(df.columns):
-            raise KeyError("Required columns are missing in the uploaded file.")
-        df = df[["STRIKE_", "OPTION_TYPE_", "LTP_"]]
-        df.rename(columns={"STRIKE_": "Strike Price", "OPTION_TYPE_": "Option Type", "LTP_": "LTP"}, inplace=True)
-        call_df = df[df["Option Type"] == "Call"][["Strike Price", "LTP"]].rename(columns={"LTP": "Call LTP"})
-        put_df = df[df["Option Type"] == "Put"][["Strike Price", "LTP"]].rename(columns={"LTP": "Put LTP"})
-        option_chain = pd.merge(call_df, put_df, on="Strike Price", how="outer").fillna(0)
-        option_chain["Strike Price"] = option_chain["Strike Price"].astype(float)
-        option_chain["Call LTP"] = option_chain["Call LTP"].astype(float)
-        option_chain["Put LTP"] = option_chain["Put LTP"].astype(float)
-        return option_chain
-    except KeyError as e:
-        st.error(f"Missing required columns in the file: {e}")
-        return None
-    except Exception as e:
-        st.error(f"Error processing file: {e}")
-        return None
+# Enhanced prediction function
+def predict_ltp(current_ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score, market_trend):
+    trend_factor = 0.02 if market_trend == "up" else -0.02 if market_trend == "down" else 0
+    sentiment_factor = india_vix * 0.1 + sentiment_score * 0.1
+    strike_impact = (strike_price - ticker_price) * (-0.02 if market_trend == "down" else 0.01)
+    sp500_impact = sp500_price * 0.003
+    random_factor = random.uniform(-0.005, 0.01)
+    momentum_factor = (ticker_price - ticker_price * 0.99) * (0.05 if market_trend == "up" else -0.05)
 
-# Function to predict LTP for the option chain
-def predict_option_chain(df, ticker_price):
-    predictions = []
-    for _, row in df.iterrows():
-        call_prediction = row["Call LTP"] + random.uniform(-0.5, 0.5)
-        put_prediction = row["Put LTP"] + random.uniform(-0.5, 0.5)
-        predictions.append({
-            "Strike Price": row["Strike Price"],
-            "Predicted Call LTP": round(call_prediction, 2),
-            "Predicted Put LTP": round(put_prediction, 2)
-        })
-    return pd.DataFrame(predictions)
+    predicted_ltp = current_ltp + trend_factor + sentiment_factor + strike_impact + sp500_impact + momentum_factor + (current_ltp * random_factor)
+    return round(predicted_ltp, 2)
 
-# Prediction logic for individual ticker
+# Main prediction logic
 def predict():
-    ticker_price, _ = fetch_ticker_data(ticker_symbol)
+    ticker_price, ticker_data = fetch_ticker_data(ticker_symbol)
     if ticker_price is None:
         st.warning(f"Could not fetch data for {ticker_name}.")
         return
 
-    india_vix = 15.0
+    st.write(f"Current price for {ticker_name}: {ticker_price}")
+
+    india_vix_ticker = yf.Ticker("^INDIAVIX")
+    try:
+        india_vix = india_vix_ticker.history(period="1d", interval="1m")["Close"].iloc[-1]
+    except:
+        india_vix = 15.0
+        st.write("Warning: Using default India VIX value.")
+    st.write(f"India VIX: {india_vix}")
+
     sp500_price = fetch_sp500_data()
+    if sp500_price is None:
+        st.warning("Could not fetch S&P 500 data.")
+    else:
+        st.write(f"Current S&P 500 price: {sp500_price}")
+
     market_trend = determine_market_trend()
+    st.write(f"Market Trend: {market_trend}")
+
     sentiment_score = display_sentiment_with_time()
 
     predicted_ltp = predict_ltp(ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score, market_trend)
-    st.write(f"Predicted LTP: {predicted_ltp}")
+    st.write(f"Predicted LTP for next day: {predicted_ltp}")
 
-if uploaded_file:
-    option_chain_df = load_and_clean_csv(uploaded_file)
-    if option_chain_df is not None:
-        ticker_price, _ = fetch_ticker_data(ticker_symbol)
-        predictions = predict_option_chain(option_chain_df, ticker_price)
-        st.write("Predicted Option Chain", predictions)
-        st.download_button("Download Predictions", predictions.to_csv(index=False), mime="text/csv")
+    stop_loss_factor = 0.02 if market_trend == "up" else 0.01
+    profit_factor = 0.05 if market_trend == "up" else 0.03
+
+    stop_loss = round(predicted_ltp * (1 - stop_loss_factor), 2)
+    max_ltp = round(predicted_ltp * (1 + profit_factor), 2)
+
+    st.write(f"Stop Loss: {stop_loss}")
+    st.write(f"Target Price: {max_ltp}")
+
+    rrr = round((max_ltp - predicted_ltp) / (predicted_ltp - stop_loss), 2) if stop_loss and max_ltp else None
+    st.write(f"Risk-to-Reward Ratio (RRR): {rrr}")
+
+    if rrr and rrr > 1:
+        st.write("Suggestion: Buy")
+    else:
+        st.write("Suggestion: Avoid")
 
 if st.button("Get Prediction"):
     predict()
