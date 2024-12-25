@@ -46,7 +46,6 @@ def get_financial_sentiment(text):
     outputs = model(**inputs)
     probs = softmax(outputs.logits, dim=-1)
     sentiment = torch.argmax(probs).item()
-
     sentiment_map = {0: "Negative", 1: "Neutral", 2: "Positive"}
     return sentiment_map[sentiment]
 
@@ -73,17 +72,15 @@ def fetch_sp500_data():
 
 # Function to get news sentiment for a given index/stock
 def get_news_sentiment(ticker_name):
-    api_key = "990f863a4f65430a99f9b0cac257f432"  # Your NewsAPI key
+    api_key = "990f863a4f65430a99f9b0cac257f432"
     url = f'https://newsapi.org/v2/everything?q={ticker_name} OR RBI OR "interest rates" OR "monetary policy"&apiKey={api_key}'
 
     try:
         response = requests.get(url)
         response.raise_for_status()
         data = response.json()
-
         if 'articles' in data and data['articles']:
-            articles = data['articles']
-            headlines = [article['title'] for article in articles if article['title']]
+            headlines = [article['title'] for article in data['articles'] if article['title']]
             sentiment_score = get_sentiment_score(headlines)
             return sentiment_score
         else:
@@ -102,7 +99,6 @@ def get_sentiment_score(news_headlines):
                 sentiment_score += TextBlob(headline).sentiment.polarity
         except Exception as e:
             st.write(f"Error analyzing sentiment for headline: {headline}. Error: {e}")
-    
     return round(sentiment_score / len(news_headlines), 2) if news_headlines else 0
 
 # Function to determine market trend using moving averages
@@ -123,18 +119,20 @@ def determine_market_trend():
 
 # Function to display sentiment score with timestamp
 def display_sentiment_with_time():
-    sentiment_score = get_news_sentiment(ticker_name)  
+    sentiment_score = get_news_sentiment(ticker_name)
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     st.write(f"Sentiment Score: {sentiment_score} (Last updated: {timestamp})")
     return sentiment_score
 
-# Function to load and process the uploaded option chain CSV file
+# Function to load and process option chain CSV
 def load_and_clean_csv(file):
     try:
         df = pd.read_csv(file)
-        df.columns = [col.strip() for col in df.columns]
-        df = df[["STRIKE \n", "OPTION TYPE \n", "LTP \n"]]
-        df.rename(columns={"STRIKE \n": "Strike Price", "LTP \n": "LTP", "OPTION TYPE \n": "Option Type"}, inplace=True)
+        df.columns = [col.strip().replace("\n", "").replace(" ", "_") for col in df.columns]
+        if not {"STRIKE_", "OPTION_TYPE_", "LTP_"}.issubset(df.columns):
+            raise KeyError("Required columns are missing in the uploaded file.")
+        df = df[["STRIKE_", "OPTION_TYPE_", "LTP_"]]
+        df.rename(columns={"STRIKE_": "Strike Price", "OPTION_TYPE_": "Option Type", "LTP_": "LTP"}, inplace=True)
         call_df = df[df["Option Type"] == "Call"][["Strike Price", "LTP"]].rename(columns={"LTP": "Call LTP"})
         put_df = df[df["Option Type"] == "Put"][["Strike Price", "LTP"]].rename(columns={"LTP": "Put LTP"})
         option_chain = pd.merge(call_df, put_df, on="Strike Price", how="outer").fillna(0)
@@ -142,26 +140,48 @@ def load_and_clean_csv(file):
         option_chain["Call LTP"] = option_chain["Call LTP"].astype(float)
         option_chain["Put LTP"] = option_chain["Put LTP"].astype(float)
         return option_chain
+    except KeyError as e:
+        st.error(f"Missing required columns in the file: {e}")
+        return None
     except Exception as e:
         st.error(f"Error processing file: {e}")
         return None
 
-# Enhanced prediction function for option chain
-def predict_option_chain(df, ticker_price, india_vix, sentiment_score, market_trend):
+# Function to predict LTP for the option chain
+def predict_option_chain(df, ticker_price):
     predictions = []
     for _, row in df.iterrows():
-        predicted_call = predict_ltp(row["Call LTP"], ticker_price, row["Strike Price"], india_vix, 0, market_trend)
-        predicted_put = predict_ltp(row["Put LTP"], ticker_price, row["Strike Price"], india_vix, 0, market_trend)
-        predictions.append({"Strike Price": row["Strike Price"], "Predicted Call LTP": predicted_call, "Predicted Put LTP": predicted_put})
+        call_prediction = row["Call LTP"] + random.uniform(-0.5, 0.5)
+        put_prediction = row["Put LTP"] + random.uniform(-0.5, 0.5)
+        predictions.append({
+            "Strike Price": row["Strike Price"],
+            "Predicted Call LTP": round(call_prediction, 2),
+            "Predicted Put LTP": round(put_prediction, 2)
+        })
     return pd.DataFrame(predictions)
 
+# Prediction logic for individual ticker
+def predict():
+    ticker_price, _ = fetch_ticker_data(ticker_symbol)
+    if ticker_price is None:
+        st.warning(f"Could not fetch data for {ticker_name}.")
+        return
+
+    india_vix = 15.0
+    sp500_price = fetch_sp500_data()
+    market_trend = determine_market_trend()
+    sentiment_score = display_sentiment_with_time()
+
+    predicted_ltp = predict_ltp(ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score, market_trend)
+    st.write(f"Predicted LTP: {predicted_ltp}")
+
 if uploaded_file:
-    option_chain = load_and_clean_csv(uploaded_file)
-    if option_chain is not None:
-        ticker_price = 51233  # Example price
-        india_vix = 15  # Default India VIX
-        sentiment = display_sentiment_with_time()
-        market_trend = determine_market_trend()
-        result = predict_option_chain(option_chain, ticker_price, india_vix, sentiment, market_trend)
-        st.write("Option Chain Predictions", result)
-        st.download_button("Download Predictions", result.to_csv(index=False), mime="text/csv")
+    option_chain_df = load_and_clean_csv(uploaded_file)
+    if option_chain_df is not None:
+        ticker_price, _ = fetch_ticker_data(ticker_symbol)
+        predictions = predict_option_chain(option_chain_df, ticker_price)
+        st.write("Predicted Option Chain", predictions)
+        st.download_button("Download Predictions", predictions.to_csv(index=False), mime="text/csv")
+
+if st.button("Get Prediction"):
+    predict()
