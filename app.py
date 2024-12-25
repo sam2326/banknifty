@@ -9,7 +9,7 @@ from textblob import TextBlob
 from datetime import datetime
 
 # Streamlit UI setup
-st.set_page_config(page_title="Trading Predictions", layout="wide")
+st.set_page_config(page_title="Trading Predictions with Option Chain Analysis", layout="wide")
 
 # Title of the App
 st.title("Trading Predictions with Option Chain Analysis")
