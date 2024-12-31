@@ -90,14 +90,14 @@ def determine_market_trend():
 def gpt_sentiment_analysis(news_headlines):
     prompt = f"Analyze the sentiment of these financial news headlines: {news_headlines}. Provide a score between -1 (negative) and 1 (positive)."
     try:
-        response = openai.ChatCompletion.create(
+        response = openai.ChatCompletion.acreate(
             model="gpt-4",
             messages=[
                 {"role": "system", "content": "You are a financial assistant."},
                 {"role": "user", "content": prompt}
             ]
         )
-        sentiment_score = float(response["choices"][0]["message"]["content"].strip())
+        sentiment_score = float(response.choices[0].message["content"].strip())
         return round(sentiment_score, 2)
     except Exception as e:
         st.write(f"Error during GPT sentiment analysis: {e}")
@@ -107,14 +107,14 @@ def gpt_sentiment_analysis(news_headlines):
 def gpt_market_insights(ticker_name, trend, sentiment_score):
     prompt = f"The market trend for {ticker_name} is {trend}. The sentiment score is {sentiment_score}. Provide an analysis of what this means for traders considering a Call option."
     try:
-        response = openai.ChatCompletion.create(
+        response = openai.ChatCompletion.acreate(
             model="gpt-4",
             messages=[
                 {"role": "system", "content": "You are a financial assistant."},
                 {"role": "user", "content": prompt}
             ]
         )
-        return response["choices"][0]["message"]["content"]
+        return response.choices[0].message["content"]
     except Exception as e:
         st.write(f"Error during GPT market insights analysis: {e}")
         return "No insights available."
@@ -125,14 +125,14 @@ def gpt_risk_reward(current_ltp, risk_percent, profit_percent, market_trend):
               f"and profit percentage of {profit_percent}, suggest an optimal stop loss and target "
               f"price for a {market_trend} market trend.")
     try:
-        response = openai.ChatCompletion.create(
+        response = openai.ChatCompletion.acreate(
             model="gpt-4",
             messages=[
                 {"role": "system", "content": "You are a financial assistant."},
                 {"role": "user", "content": prompt}
             ]
         )
-        return response["choices"][0]["message"]["content"]
+        return response.choices[0].message["content"]
     except Exception as e:
         st.write(f"Error during GPT risk and reward analysis: {e}")
         return "No risk and reward suggestions available."
