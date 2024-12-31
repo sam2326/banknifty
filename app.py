@@ -70,6 +70,22 @@ def fetch_sp500_data():
         st.write(f"Error fetching S&P 500 data: {e}")
         return None
 
+# Determine market trend using moving averages
+def determine_market_trend():
+    try:
+        data = yf.Ticker(ticker_symbol).history(period="1mo")
+        data['5_MA'] = data['Close'].rolling(window=5).mean()
+        data['20_MA'] = data['Close'].rolling(window=20).mean()
+        if data['5_MA'].iloc[-1] > data['20_MA'].iloc[-1]:
+            return "up"
+        elif data['5_MA'].iloc[-1] < data['20_MA'].iloc[-1]:
+            return "down"
+        else:
+            return "neutral"
+    except Exception as e:
+        st.write(f"Error determining market trend: {e}")
+        return "neutral"
+
 # GPT Sentiment Analysis
 def gpt_sentiment_analysis(news_headlines):
     prompt = f"Analyze the sentiment of these financial news headlines: {news_headlines}. Provide a score between -1 (negative) and 1 (positive)."
