@@ -1,13 +1,12 @@
 import yfinance as yf
 import streamlit as st
-import openai
+import random
+import torch
+from transformers import BertTokenizer, BertForSequenceClassification
+from torch.nn.functional import softmax
 import requests
-import pandas as pd
-import ta
-from datetime import datetime
-
-# Set your OpenAI API key
-openai.api_key = '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'
+from textblob import TextBlob
+from datetime import datetime, timedelta
 
 # Streamlit UI setup
 st.set_page_config(page_title="Trading Predictions", layout="wide")
@@ -35,25 +34,30 @@ ltp = st.sidebar.number_input("Enter Current LTP", min_value=0.0, value=765.50, 
 risk_percent = st.sidebar.number_input("Enter Risk Percentage (%)", min_value=0.0, max_value=100.0, value=1.0, step=0.1)
 profit_percent = st.sidebar.number_input("Enter Profit Percentage (%)", min_value=0.0, max_value=100.0, value=5.0, step=0.1)
 
+# Load FinBERT for Sentiment Analysis
+tokenizer = BertTokenizer.from_pretrained('yiyanghkust/finbert-tone', do_lower_case=False)
+model = BertForSequenceClassification.from_pretrained('yiyanghkust/finbert-tone')
+
+# Function to get financial sentiment using FinBERT
+def get_financial_sentiment(text):
+    inputs = tokenizer(text, return_tensors="pt", truncation=True, padding=True)
+    outputs = model(**inputs)
+    probs = softmax(outputs.logits, dim=-1)
+    sentiment = torch.argmax(probs).item()
+
+    sentiment_map = {0: "Negative", 1: "Neutral", 2: "Positive"}
+    return sentiment_map[sentiment]
+
 # Function to fetch data for selected ticker
 def fetch_ticker_data(ticker):
     try:
         ticker_obj = yf.Ticker(ticker)
-        data = ticker_obj.history(period="1mo", interval="1d")
+        data = ticker_obj.history(period="1d", interval="1m")
         current_price = data["Close"].iloc[-1]
         return current_price, data
     except Exception as e:
         st.write(f"Error fetching data for {ticker}: {e}")
         return None, None
-
-# Function to calculate technical indicators
-def calculate_technical_indicators(data):
-    data['RSI'] = ta.momentum.RSIIndicator(data['Close']).rsi()
-    macd = ta.trend.MACD(data['Close'])
-    data['MACD'] = macd.macd()
-    data['MACD_Signal'] = macd.macd_signal()
-    data['MACD_Diff'] = macd.macd_diff()
-    return data
 
 # Function to fetch S&P 500 data
 def fetch_sp500_data():
@@ -87,30 +91,22 @@ def get_news_sentiment(ticker_name):
         st.write(f"Error fetching news: {e}")
         return 0  # Return 0 if there's an error
 
-# Function to calculate sentiment score from headlines using OpenAI
+# Function to calculate sentiment score from headlines
 def get_sentiment_score(news_headlines):
     sentiment_score = 0
     for headline in news_headlines:
         try:
             if isinstance(headline, str) and headline.strip():
-                response = openai.Completion.create(
-                    engine="text-davinci-003",
-                    prompt=f"Analyze the sentiment of the following financial news headline: '{headline}'\nSentiment (Positive, Neutral, Negative):",
-                    max_tokens=1
-                )
-                sentiment = response.choices[0].text.strip().lower()
-                if sentiment == 'positive':
-                    sentiment_score += 1
-                elif sentiment == 'negative':
-                    sentiment_score -= 1
+                sentiment_score += TextBlob(headline).sentiment.polarity
         except Exception as e:
             st.write(f"Error analyzing sentiment for headline: {headline}. Error: {e}")
     
     return round(sentiment_score / len(news_headlines), 2) if news_headlines else 0
 
 # Function to determine market trend using moving averages
-def determine_market_trend(data):
+def determine_market_trend():
     try:
+        data = yf.Ticker(ticker_symbol).history(period="1mo")
         data['5_MA'] = data['Close'].rolling(window=5).mean()
         data['20_MA'] = data['Close'].rolling(window=20).mean()
         if data['5_MA'].iloc[-1] > data['20_MA'].iloc[-1]:
@@ -131,8 +127,64 @@ def display_sentiment_with_time():
     return sentiment_score  # Return sentiment score for use in the prediction
 
 # Enhanced prediction function
-def predict_ltp(current_ltp, ticker_data, strike_price, india_vix, sp500_price, sentiment_score, market_trend):
-    # Extract latest technical indicators
-    latest_rsi = ticker_data['RSI'].iloc[-1]
-    latest_macd = ticker_data['MACD'].iloc[-1]
-    latest_macd_signal = ticker_data['MACD_Signal'].iloc[- 
+def predict_ltp(current_ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score, market_trend):
+    trend_factor = 0.02 if market_trend == "up" else -0.02 if market_trend == "down" else 0
+    sentiment_factor = india_vix * 0.1 + sentiment_score * 0.1
+    strike_impact = (strike_price - ticker_price) * (-0.02 if market_trend == "down" else 0.01)
+    sp500_impact = sp500_price * 0.003
+    random_factor = random.uniform(-0.005, 0.01)
+    momentum_factor = (ticker_price - ticker_price * 0.99) * (0.05 if market_trend == "up" else -0.05)
+
+    predicted_ltp = current_ltp + trend_factor + sentiment_factor + strike_impact + sp500_impact + momentum_factor + (current_ltp * random_factor)
+    return round(predicted_ltp, 2)
+
+# Main prediction logic
+def predict():
+    ticker_price, ticker_data = fetch_ticker_data(ticker_symbol)
+    if ticker_price is None:
+        st.warning(f"Could not fetch data for {ticker_name}.")
+        return
+
+    st.write(f"Current price for {ticker_name}: {ticker_price}")
+
+    india_vix_ticker = yf.Ticker("^INDIAVIX")
+    try:
+        india_vix = india_vix_ticker.history(period="1d", interval="1m")["Close"].iloc[-1]
+    except:
+        india_vix = 15.0
+        st.write("Warning: Using default India VIX value.")
+    st.write(f"India VIX: {india_vix}")
+
+    sp500_price = fetch_sp500_data()
+    if sp500_price is None:
+        st.warning("Could not fetch S&P 500 data.")
+    else:
+        st.write(f"Current S&P 500 price: {sp500_price}")
+
+    market_trend = determine_market_trend()
+    st.write(f"Market Trend: {market_trend}")
+
+    sentiment_score = display_sentiment_with_time()
+
+    predicted_ltp = predict_ltp(ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score, market_trend)
+    st.write(f"Predicted LTP for next day: {predicted_ltp}")
+
+    stop_loss_factor = 0.02 if market_trend == "up" else 0.01
+    profit_factor = 0.05 if market_trend == "up" else 0.03
+
+    stop_loss = round(predicted_ltp * (1 - stop_loss_factor), 2)
+    max_ltp = round(predicted_ltp * (1 + profit_factor), 2)
+
+    st.write(f"Stop Loss: {stop_loss}")
+    st.write(f"Target Price: {max_ltp}")
+
+    rrr = round((max_ltp - predicted_ltp) / (predicted_ltp - stop_loss), 2) if stop_loss and max_ltp else None
+    st.write(f"Risk-to-Reward Ratio (RRR): {rrr}")
+
+    if rrr and rrr > 1:
+        st.write("Suggestion: Buy")
+    else:
+        st.write("Suggestion: Avoid")
+
+if st.button("Get Prediction"):
+    predict()
