@@ -8,7 +8,7 @@ import json
 import websocket
 
 # OpenAI API Key
-OPENAI_API_KEY = "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"
+OPENAI_API_KEY = "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"
 
 # Streamlit UI setup
 st.set_page_config(page_title="Trading Predictions", layout="wide")
@@ -92,26 +92,29 @@ def gpt_via_websocket(prompt):
         "OpenAI-Beta: realtime=v1"
     ]
 
-    # Connect to WebSocket
-    ws = websocket.create_connection(url, header=headers)
+    try:
+        # Connect to WebSocket
+        ws = websocket.create_connection(url, header=headers)
 
-    # Send the prompt
-    event = {
-        "type": "response.create",
-        "response": {
-            "modalities": ["text"],
-            "instructions": prompt
+        # Send the prompt
+        event = {
+            "type": "response.create",
+            "response": {
+                "modalities": ["text"],
+                "instructions": prompt
+            }
         }
-    }
-    ws.send(json.dumps(event))
+        ws.send(json.dumps(event))
 
-    # Receive the response
-    message = ws.recv()
-    ws.close()
+        # Receive the response
+        message = ws.recv()
+        ws.close()
 
-    # Parse and return the response
-    server_event = json.loads(message)
-    return server_event.get("response", {}).get("text", "No response available.")
+        # Parse and return the response
+        server_event = json.loads(message)
+        return server_event.get("response", {}).get("text", "No response available.")
+    except Exception as e:
+        return f"Error connecting to WebSocket: {e}"
 
 # Main Prediction Function
 def predict():
