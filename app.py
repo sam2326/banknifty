@@ -4,13 +4,11 @@ import random
 import torch
 from transformers import BertTokenizer, BertForSequenceClassification
 from torch.nn.functional import softmax
-import asyncio
-import websockets
 import json
-import openai
+import websocket
 
 # OpenAI API Key
-openai.api_key = "your_openai_api_key"
+OPENAI_API_KEY = "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"
 
 # Streamlit UI setup
 st.set_page_config(page_title="Trading Predictions", layout="wide")
@@ -87,43 +85,36 @@ def determine_market_trend():
         return "neutral"
 
 # WebSocket Handler for GPT Analysis
-async def gpt_via_websocket(prompt):
-    uri = "ws://localhost:8000"
-    async with websockets.connect(uri) as websocket:
-        # Send the prompt
-        event = {
-            "type": "response.create",
-            "response": {
-                "modalities": ["text"],
-                "instructions": prompt
-            }
+def gpt_via_websocket(prompt):
+    url = "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-12-17"
+    headers = [
+        f"Authorization: Bearer {OPENAI_API_KEY}",
+        "OpenAI-Beta: realtime=v1"
+    ]
+
+    # Connect to WebSocket
+    ws = websocket.create_connection(url, header=headers)
+
+    # Send the prompt
+    event = {
+        "type": "response.create",
+        "response": {
+            "modalities": ["text"],
+            "instructions": prompt
         }
-        await websocket.send(json.dumps(event))
+    }
+    ws.send(json.dumps(event))
 
-        # Wait for the response
-        message = await websocket.recv()
-        server_event = json.loads(message)
-        return server_event.get("content", "No response available.")
+    # Receive the response
+    message = ws.recv()
+    ws.close()
 
-# Asynchronous GPT Sentiment Analysis
-async def gpt_sentiment_analysis(news_headlines):
-    prompt = f"Analyze the sentiment of these financial news headlines: {news_headlines}. Provide a score between -1 (negative) and 1 (positive)."
-    return await gpt_via_websocket(prompt)
-
-# Asynchronous GPT Market Insights
-async def gpt_market_insights(ticker_name, trend, sentiment_score):
-    prompt = f"The market trend for {ticker_name} is {trend}. The sentiment score is {sentiment_score}. Provide an analysis of what this means for traders considering a Call option."
-    return await gpt_via_websocket(prompt)
-
-# Asynchronous GPT Risk and Reward Analysis
-async def gpt_risk_reward(current_ltp, risk_percent, profit_percent, market_trend):
-    prompt = (f"Given the current LTP of {current_ltp}, risk percentage of {risk_percent}, "
-              f"and profit percentage of {profit_percent}, suggest an optimal stop loss and target "
-              f"price for a {market_trend} market trend.")
-    return await gpt_via_websocket(prompt)
+    # Parse and return the response
+    server_event = json.loads(message)
+    return server_event.get("response", {}).get("text", "No response available.")
 
 # Main Prediction Function
-async def predict():
+def predict():
     ticker_price, _ = fetch_ticker_data(ticker_symbol)
     if ticker_price is None:
         st.warning(f"Could not fetch data for {ticker_name}.")
@@ -151,19 +142,19 @@ async def predict():
     st.write(f"Market Trend: {market_trend}")
 
     # Sentiment Analysis
-    sentiment_score = await gpt_sentiment_analysis(ticker_name)
+    sentiment_score = gpt_via_websocket(f"Analyze sentiment for {ticker_name}")
     st.write(f"Sentiment Score: {sentiment_score}")
 
     # Market Insights
-    insights = await gpt_market_insights(ticker_name, market_trend, sentiment_score)
+    insights = gpt_via_websocket(f"The market trend for {ticker_name} is {market_trend}. Provide insights.")
     st.write("Market Insights:")
     st.write(insights)
 
-    # Risk Reward Analysis
-    risk_analysis = await gpt_risk_reward(ltp, risk_percent, profit_percent, market_trend)
+    # Risk and Reward Analysis
+    risk_analysis = gpt_via_websocket(f"Given LTP {ltp}, risk {risk_percent}%, and profit {profit_percent}%, suggest targets.")
     st.write("Risk and Reward Analysis:")
     st.write(risk_analysis)
 
 # Run Prediction on Button Click
 if st.button("Get Prediction"):
-    asyncio.run(predict())
+    predict()
