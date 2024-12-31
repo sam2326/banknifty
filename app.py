@@ -4,13 +4,13 @@ import random
 import torch
 from transformers import BertTokenizer, BertForSequenceClassification
 from torch.nn.functional import softmax
-import requests
-from textblob import TextBlob
-from datetime import datetime
+import asyncio
+import websockets
+import json
 import openai
 
 # OpenAI API Key
-openai.api_key = "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"
+openai.api_key = "your_openai_api_key"
 
 # Streamlit UI setup
 st.set_page_config(page_title="Trading Predictions", layout="wide")
@@ -29,7 +29,7 @@ SUPPORTED_TICKERS = {
 st.sidebar.title("User Inputs")
 ticker_name = st.sidebar.selectbox("Select Ticker", list(SUPPORTED_TICKERS.keys()))
 ticker_symbol = SUPPORTED_TICKERS[ticker_name]
-expiry_date = st.sidebar.date_input("Select Expiry Date", min_value=datetime.today())
+expiry_date = st.sidebar.date_input("Select Expiry Date")
 strike_price = st.sidebar.number_input("Enter Strike Price", min_value=0, value=53700)
 option_type = st.sidebar.selectbox("Select Option Type", ["Call", "Put"])
 ltp = st.sidebar.number_input("Enter Current LTP", min_value=0.0, value=765.50, step=0.05)
@@ -86,59 +86,44 @@ def determine_market_trend():
         st.write(f"Error determining market trend: {e}")
         return "neutral"
 
-# GPT Sentiment Analysis
-def gpt_sentiment_analysis(news_headlines):
+# WebSocket Handler for GPT Analysis
+async def gpt_via_websocket(prompt):
+    uri = "ws://localhost:8000"
+    async with websockets.connect(uri) as websocket:
+        # Send the prompt
+        event = {
+            "type": "response.create",
+            "response": {
+                "modalities": ["text"],
+                "instructions": prompt
+            }
+        }
+        await websocket.send(json.dumps(event))
+
+        # Wait for the response
+        message = await websocket.recv()
+        server_event = json.loads(message)
+        return server_event.get("content", "No response available.")
+
+# Asynchronous GPT Sentiment Analysis
+async def gpt_sentiment_analysis(news_headlines):
     prompt = f"Analyze the sentiment of these financial news headlines: {news_headlines}. Provide a score between -1 (negative) and 1 (positive)."
-    try:
-        response = openai.ChatCompletion.create(
-            model="gpt-4",
-            messages=[
-                {"role": "system", "content": "You are a financial assistant."},
-                {"role": "user", "content": prompt}
-            ]
-        )
-        sentiment_score = response["choices"][0]["message"]["content"].strip()
-        return round(float(sentiment_score), 2)
-    except Exception as e:
-        st.write(f"Error during GPT sentiment analysis: {e}")
-        return 0.0
+    return await gpt_via_websocket(prompt)
 
-# Market Insights using GPT
-def gpt_market_insights(ticker_name, trend, sentiment_score):
+# Asynchronous GPT Market Insights
+async def gpt_market_insights(ticker_name, trend, sentiment_score):
     prompt = f"The market trend for {ticker_name} is {trend}. The sentiment score is {sentiment_score}. Provide an analysis of what this means for traders considering a Call option."
-    try:
-        response = openai.ChatCompletion.create(
-            model="gpt-4",
-            messages=[
-                {"role": "system", "content": "You are a financial assistant."},
-                {"role": "user", "content": prompt}
-            ]
-        )
-        return response["choices"][0]["message"]["content"].strip()
-    except Exception as e:
-        st.write(f"Error during GPT market insights analysis: {e}")
-        return "No insights available."
+    return await gpt_via_websocket(prompt)
 
-# GPT-based Risk and Reward Analysis
-def gpt_risk_reward(current_ltp, risk_percent, profit_percent, market_trend):
+# Asynchronous GPT Risk and Reward Analysis
+async def gpt_risk_reward(current_ltp, risk_percent, profit_percent, market_trend):
     prompt = (f"Given the current LTP of {current_ltp}, risk percentage of {risk_percent}, "
               f"and profit percentage of {profit_percent}, suggest an optimal stop loss and target "
               f"price for a {market_trend} market trend.")
-    try:
-        response = openai.ChatCompletion.create(
-            model="gpt-4",
-            messages=[
-                {"role": "system", "content": "You are a financial assistant."},
-                {"role": "user", "content": prompt}
-            ]
-        )
-        return response["choices"][0]["message"]["content"].strip()
-    except Exception as e:
-        st.write(f"Error during GPT risk and reward analysis: {e}")
-        return "No risk and reward suggestions available."
+    return await gpt_via_websocket(prompt)
 
 # Main Prediction Function
-def predict():
+async def predict():
     ticker_price, _ = fetch_ticker_data(ticker_symbol)
     if ticker_price is None:
         st.warning(f"Could not fetch data for {ticker_name}.")
@@ -166,18 +151,19 @@ def predict():
     st.write(f"Market Trend: {market_trend}")
 
     # Sentiment Analysis
-    sentiment_score = gpt_sentiment_analysis(ticker_name)
+    sentiment_score = await gpt_sentiment_analysis(ticker_name)
     st.write(f"Sentiment Score: {sentiment_score}")
 
     # Market Insights
-    insights = gpt_market_insights(ticker_name, market_trend, sentiment_score)
+    insights = await gpt_market_insights(ticker_name, market_trend, sentiment_score)
     st.write("Market Insights:")
     st.write(insights)
 
     # Risk Reward Analysis
-    risk_analysis = gpt_risk_reward(ltp, risk_percent, profit_percent, market_trend)
+    risk_analysis = await gpt_risk_reward(ltp, risk_percent, profit_percent, market_trend)
     st.write("Risk and Reward Analysis:")
     st.write(risk_analysis)
 
+# Run Prediction on Button Click
 if st.button("Get Prediction"):
-    predict()
+    asyncio.run(predict())
