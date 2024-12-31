@@ -7,8 +7,8 @@ from torch.nn.functional import softmax
 import json
 import websocket
 
-# OpenAI API Key
-OPENAI_API_KEY = "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"
+# OpenAI Admin API Key
+OPENAI_API_KEY = "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"
 
 # Streamlit UI setup
 st.set_page_config(page_title="Trading Predictions", layout="wide")
@@ -113,8 +113,10 @@ def gpt_via_websocket(prompt):
         # Parse and return the response
         server_event = json.loads(message)
         return server_event.get("response", {}).get("text", "No response available.")
+    except websocket.WebSocketException as ws_error:
+        return f"WebSocket error: {ws_error}"
     except Exception as e:
-        return f"Error connecting to WebSocket: {e}"
+        return f"Error: {e}"
 
 # Main Prediction Function
 def predict():
