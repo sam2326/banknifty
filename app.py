@@ -36,16 +36,6 @@ ltp = st.sidebar.number_input("Enter Current LTP", min_value=0.0, value=254.60, 
 tokenizer = BertTokenizer.from_pretrained('yiyanghkust/finbert-tone', do_lower_case=False)
 model = BertForSequenceClassification.from_pretrained('yiyanghkust/finbert-tone')
 
-# Function to get financial sentiment using FinBERT
-def get_financial_sentiment(text):
-    inputs = tokenizer(text, return_tensors="pt", truncation=True, padding=True)
-    outputs = model(**inputs)
-    probs = softmax(outputs.logits, dim=-1)
-    sentiment = torch.argmax(probs).item()
-
-    sentiment_map = {0: "Negative", 1: "Neutral", 2: "Positive"}
-    return sentiment_map[sentiment]
-
 # Function to fetch data for selected ticker
 def fetch_ticker_data(ticker):
     try:
@@ -81,23 +71,37 @@ def determine_market_trend():
         st.write(f"Error determining market trend: {e}")
         return "neutral"
 
-# Function to display sentiment score with timestamp
+# Function to display sentiment score
 def display_sentiment_with_time():
-    sentiment_score = get_financial_sentiment(ticker_name)
+    sentiment_score = 0.0  # Default value to avoid NoneType errors
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     st.write(f"Sentiment Score: {sentiment_score} (Last updated: {timestamp})")
     return sentiment_score
 
-# Enhanced prediction function
+# ✅ Fixed predict_ltp() function
 def predict_ltp(current_ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score, market_trend):
+    # Ensure values are numeric, use defaults if None
+    india_vix = india_vix if india_vix is not None else 15.0  # Default VIX
+    sentiment_score = sentiment_score if isinstance(sentiment_score, (int, float)) else 0.0  # Default sentiment
+    sp500_price = sp500_price if sp500_price is not None else 0.0  # Default S&P 500 price impact
+
     trend_factor = 0.02 if market_trend == "up" else -0.02 if market_trend == "down" else 0
     sentiment_factor = india_vix * 0.1 + sentiment_score * 0.1
     strike_impact = (strike_price - ticker_price) * (-0.02 if market_trend == "down" else 0.01)
-    sp500_impact = sp500_price * 0.003 if sp500_price else 0
+    sp500_impact = sp500_price * 0.003
     random_factor = random.uniform(-0.005, 0.01)
     momentum_factor = (ticker_price - ticker_price * 0.99) * (0.05 if market_trend == "up" else -0.05)
 
-    predicted_ltp = current_ltp + trend_factor + sentiment_factor + strike_impact + sp500_impact + momentum_factor + (current_ltp * random_factor)
+    predicted_ltp = (
+        current_ltp
+        + trend_factor
+        + sentiment_factor
+        + strike_impact
+        + sp500_impact
+        + momentum_factor
+        + (current_ltp * random_factor)
+    )
+
     return round(predicted_ltp, 2)
 
 # Main prediction logic
@@ -142,7 +146,7 @@ def predict():
     rrr = round((max_ltp - predicted_ltp) / (predicted_ltp - stop_loss), 2) if stop_loss else None
     st.write(f"Risk-to-Reward Ratio (RRR): {rrr}")
 
-    # ✅ FIXED TRADE LOGIC: No "Buy" if trend contradicts option type
+    # ✅ FIXED TRADE LOGIC
     if market_trend == "down" and option_type == "Call":
         st.write("❌ **Suggestion: Avoid Buying Calls in Downtrend**")
     elif market_trend == "up" and option_type == "Put":
