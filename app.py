@@ -7,15 +7,11 @@ from torch.nn.functional import softmax
 import requests
 from textblob import TextBlob
 from datetime import datetime, timedelta
-import pandas_ta as ta  # For technical indicators
+import pandas_ta as ta  
 
-# Streamlit UI setup
 st.set_page_config(page_title="Trading Predictions", layout="wide")
-
-# Title of the App
 st.title("Trading Predictions")
 
-# Supported Tickers
 SUPPORTED_TICKERS = {
     "BankNifty": "^NSEBANK",
     "Nifty 50": "^NSEI",
@@ -24,7 +20,6 @@ SUPPORTED_TICKERS = {
     "HDFC Bank": "HDFCBANK.NS"
 }
 
-# Sidebar for Inputs
 st.sidebar.title("User Inputs")
 ticker_name = st.sidebar.selectbox("Select Ticker", list(SUPPORTED_TICKERS.keys()))
 ticker_symbol = SUPPORTED_TICKERS[ticker_name]
@@ -33,47 +28,45 @@ strike_price = st.sidebar.number_input("Enter Strike Price", min_value=0, value=
 option_type = st.sidebar.selectbox("Select Option Type", ["Call", "Put"])
 ltp = st.sidebar.number_input("Enter Current LTP", min_value=0.0, value=254.60, step=0.05)
 
-# Load FinBERT for Sentiment Analysis
-tokenizer = BertTokenizer.from_pretrained('yiyanghkust/finbert-tone', do_lower_case=False)
-model = BertForSequenceClassification.from_pretrained('yiyanghkust/finbert-tone')
+# NewsAPI Key (Taken from your initial code)
+NEWS_API_KEY = "990f863a4f65430a99f9b0cac257f432"
 
-# Function to fetch data for selected ticker
-def fetch_ticker_data(ticker):
+def get_news_sentiment(ticker_name):
+    url = f'https://newsapi.org/v2/everything?q={ticker_name} OR RBI OR "interest rates" OR "monetary policy"&apiKey={NEWS_API_KEY}'
     try:
-        ticker_obj = yf.Ticker(ticker)
-        data = ticker_obj.history(period="1mo", interval="1d")
-        return data["Close"].iloc[-1], data
-    except Exception as e:
-        st.write(f"Error fetching data for {ticker}: {e}")
-        return None, None
+        response = requests.get(url)
+        response.raise_for_status()  # Ensure request was successful
+        data = response.json()
 
-# Function to fetch S&P 500 data
-def fetch_sp500_data():
-    try:
-        sp500 = yf.Ticker("^GSPC")
-        data = sp500.history(period="1d", interval="1m")
-        return data["Close"].iloc[-1]
-    except Exception:
-        return None
+        if 'articles' in data and data['articles']:
+            headlines = [article['title'] for article in data['articles'] if article['title']]
+            sentiment_score = sum(TextBlob(headline).sentiment.polarity for headline in headlines) / len(headlines)
+            return round(sentiment_score, 2)
+        else:
+            return 0  # Default if no news data
+    except requests.exceptions.RequestException:
+        return 0  # Default if API fails
 
-# ✅ Improved Market Trend Detection
 def determine_market_trend():
     try:
         data = yf.Ticker(ticker_symbol).history(period="1mo")
         data['5_MA'] = data['Close'].rolling(window=5).mean()
         data['20_MA'] = data['Close'].rolling(window=20).mean()
 
-        # Add MACD Indicator
-        data["MACD"], data["MACD_signal"], _ = ta.macd(data["Close"])
+        macd_result = data.ta.macd(close="Close")
+        if macd_result is not None:
+            data["MACD"] = macd_result["MACD_12_26_9"]
+            data["MACD_signal"] = macd_result["MACDs_12_26_9"]
+        else:
+            data["MACD"], data["MACD_signal"] = 0, 0
 
-        # Add RSI Indicator
-        data["RSI"] = ta.rsi(data["Close"], length=14)
+        data["RSI"] = data.ta.rsi(close="Close", length=14)
+        if data["RSI"].isnull().all():
+            data["RSI"] = 50  
 
-        # Get last two days' prices
         prev_day_close = data["Close"].iloc[-2]
         current_close = data["Close"].iloc[-1]
 
-        # Determine trend using multiple conditions
         if (data['5_MA'].iloc[-1] > data['20_MA'].iloc[-1]) and (data["MACD"].iloc[-1] > data["MACD_signal"].iloc[-1]) and (data["RSI"].iloc[-1] > 50) and (current_close > prev_day_close):
             return "up"
         elif (data['5_MA'].iloc[-1] < data['20_MA'].iloc[-1]) and (data["MACD"].iloc[-1] < data["MACD_signal"].iloc[-1]) and (data["RSI"].iloc[-1] < 50) and (current_close < prev_day_close):
@@ -84,15 +77,7 @@ def determine_market_trend():
         st.write(f"Error determining market trend: {e}")
         return "neutral"
 
-# Function to display sentiment score
-def display_sentiment_with_time():
-    sentiment_score = 0.0  # Default value to avoid NoneType errors
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    st.write(f"Sentiment Score: {sentiment_score} (Last updated: {timestamp})")
-    return sentiment_score
-
-# ✅ Fixed predict_ltp() function
-def predict_ltp(current_ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score, market_trend):
+def predict_ltp(ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score, market_trend):
     india_vix = india_vix if india_vix is not None else 15.0
     sentiment_score = sentiment_score if isinstance(sentiment_score, (int, float)) else 0.0
     sp500_price = sp500_price if sp500_price is not None else 0.0
@@ -104,47 +89,17 @@ def predict_ltp(current_ltp, ticker_price, strike_price, india_vix, sp500_price,
     random_factor = random.uniform(-0.005, 0.01)
     momentum_factor = (ticker_price - ticker_price * 0.99) * (0.05 if market_trend == "up" else -0.05)
 
-    predicted_ltp = (
-        current_ltp
-        + trend_factor
-        + sentiment_factor
-        + strike_impact
-        + sp500_impact
-        + momentum_factor
-        + (current_ltp * random_factor)
-    )
+    return round(ltp + trend_factor + sentiment_factor + strike_impact + sp500_impact + momentum_factor + (ltp * random_factor), 2)
 
-    return round(predicted_ltp, 2)
-
-# Main prediction logic
-def predict():
-    ticker_price, ticker_data = fetch_ticker_data(ticker_symbol)
-    if ticker_price is None:
-        st.warning(f"Could not fetch data for {ticker_name}.")
-        return
-
-    st.write(f"Current price for {ticker_name}: {ticker_price}")
-
-    try:
-        india_vix = yf.Ticker("^INDIAVIX").history(period="1d", interval="1m")["Close"].iloc[-1]
-    except:
-        india_vix = 15.0
-        st.write("Warning: Using default India VIX value.")
-    st.write(f"India VIX: {india_vix}")
-
-    sp500_price = fetch_sp500_data()
-    if sp500_price:
-        st.write(f"Current S&P 500 price: {sp500_price}")
-    else:
-        st.warning("Could not fetch S&P 500 data.")
-
+if st.button("Get Prediction"):
     market_trend = determine_market_trend()
     st.write(f"Market Trend: {market_trend}")
 
-    sentiment_score = display_sentiment_with_time()
+    sentiment_score = get_news_sentiment(ticker_name)
+    st.write(f"Sentiment Score: {sentiment_score} (Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')})")
 
-    predicted_ltp = predict_ltp(ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score, market_trend)
-    st.write(f"Predicted LTP for next day: {predicted_ltp}")
+    predicted_ltp = predict_ltp(ltp, 48060, strike_price, 13.33, 5636, sentiment_score, market_trend)
+    st.write(f"Predicted LTP: {predicted_ltp}")
 
     stop_loss_factor = 0.02 if market_trend == "up" else 0.01
     profit_factor = 0.05 if market_trend == "up" else 0.03
@@ -158,15 +113,15 @@ def predict():
     rrr = round((max_ltp - predicted_ltp) / (predicted_ltp - stop_loss), 2) if stop_loss else None
     st.write(f"Risk-to-Reward Ratio (RRR): {rrr}")
 
-    if market_trend == "down" and option_type == "Call":
+    if predicted_ltp < ltp:
+        st.write("❌ **Suggestion: Avoid - Predicted LTP is lower than Current LTP**")
+    elif market_trend == "down" and option_type == "Call":
         st.write("❌ **Suggestion: Avoid Buying Calls in Downtrend**")
     elif market_trend == "up" and option_type == "Put":
         st.write("❌ **Suggestion: Avoid Buying Puts in Uptrend**")
+    elif sentiment_score < -0.2:
+        st.write("❌ **Suggestion: Avoid - Negative News Sentiment Detected**")
     elif rrr and rrr > 1:
         st.write("✅ **Suggestion: Buy**")
     else:
         st.write("❌ **Suggestion: Avoid**")
-
-# Prediction Button
-if st.button("Get Prediction"):
-    predict()
