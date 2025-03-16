@@ -7,6 +7,7 @@ from torch.nn.functional import softmax
 import requests
 from textblob import TextBlob
 from datetime import datetime, timedelta
+import pandas_ta as ta  # For technical indicators
 
 # Streamlit UI setup
 st.set_page_config(page_title="Trading Predictions", layout="wide")
@@ -55,15 +56,27 @@ def fetch_sp500_data():
     except Exception:
         return None
 
-# Function to determine market trend using moving averages
+# ✅ Improved Market Trend Detection
 def determine_market_trend():
     try:
         data = yf.Ticker(ticker_symbol).history(period="1mo")
         data['5_MA'] = data['Close'].rolling(window=5).mean()
         data['20_MA'] = data['Close'].rolling(window=20).mean()
-        if data['5_MA'].iloc[-1] > data['20_MA'].iloc[-1]:
+
+        # Add MACD Indicator
+        data["MACD"], data["MACD_signal"], _ = ta.macd(data["Close"])
+
+        # Add RSI Indicator
+        data["RSI"] = ta.rsi(data["Close"], length=14)
+
+        # Get last two days' prices
+        prev_day_close = data["Close"].iloc[-2]
+        current_close = data["Close"].iloc[-1]
+
+        # Determine trend using multiple conditions
+        if (data['5_MA'].iloc[-1] > data['20_MA'].iloc[-1]) and (data["MACD"].iloc[-1] > data["MACD_signal"].iloc[-1]) and (data["RSI"].iloc[-1] > 50) and (current_close > prev_day_close):
             return "up"
-        elif data['5_MA'].iloc[-1] < data['20_MA'].iloc[-1]:
+        elif (data['5_MA'].iloc[-1] < data['20_MA'].iloc[-1]) and (data["MACD"].iloc[-1] < data["MACD_signal"].iloc[-1]) and (data["RSI"].iloc[-1] < 50) and (current_close < prev_day_close):
             return "down"
         else:
             return "neutral"
@@ -80,10 +93,9 @@ def display_sentiment_with_time():
 
 # ✅ Fixed predict_ltp() function
 def predict_ltp(current_ltp, ticker_price, strike_price, india_vix, sp500_price, sentiment_score, market_trend):
-    # Ensure values are numeric, use defaults if None
-    india_vix = india_vix if india_vix is not None else 15.0  # Default VIX
-    sentiment_score = sentiment_score if isinstance(sentiment_score, (int, float)) else 0.0  # Default sentiment
-    sp500_price = sp500_price if sp500_price is not None else 0.0  # Default S&P 500 price impact
+    india_vix = india_vix if india_vix is not None else 15.0
+    sentiment_score = sentiment_score if isinstance(sentiment_score, (int, float)) else 0.0
+    sp500_price = sp500_price if sp500_price is not None else 0.0
 
     trend_factor = 0.02 if market_trend == "up" else -0.02 if market_trend == "down" else 0
     sentiment_factor = india_vix * 0.1 + sentiment_score * 0.1
@@ -146,7 +158,6 @@ def predict():
     rrr = round((max_ltp - predicted_ltp) / (predicted_ltp - stop_loss), 2) if stop_loss else None
     st.write(f"Risk-to-Reward Ratio (RRR): {rrr}")
 
-    # ✅ FIXED TRADE LOGIC
     if market_trend == "down" and option_type == "Call":
         st.write("❌ **Suggestion: Avoid Buying Calls in Downtrend**")
     elif market_trend == "up" and option_type == "Put":
