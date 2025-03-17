@@ -53,20 +53,31 @@ def determine_market_trend():
         data['5_MA'] = data['Close'].rolling(window=5).mean()
         data['20_MA'] = data['Close'].rolling(window=20).mean()
 
-        macd_result = data.ta.macd(close="Close")
+        # Compute MACD
+        macd_result = data.ta.macd(close="Close", fast=12, slow=26, signal=9)
         if macd_result is not None:
-            data["MACD"] = macd_result["MACD_12_26_9"]
-            data["MACD_signal"] = macd_result["MACDs_12_26_9"]
-        else:
-            data["MACD"], data["MACD_signal"] = 0, 0
+            # Dynamically detect MACD column names
+            macd_col = [col for col in macd_result.columns if "MACD_" in col]
+            macd_signal_col = [col for col in macd_result.columns if "MACDs_" in col]
 
+            if macd_col and macd_signal_col:  # Ensure columns exist
+                data["MACD"] = macd_result[macd_col[0]]
+                data["MACD_signal"] = macd_result[macd_signal_col[0]]
+            else:
+                data["MACD"], data["MACD_signal"] = 0, 0  # Default values if MACD fails
+        else:
+            data["MACD"], data["MACD_signal"] = 0, 0  # Default values if MACD fails
+
+        # Compute RSI
         data["RSI"] = data.ta.rsi(close="Close", length=14)
         if data["RSI"].isnull().all():
-            data["RSI"] = 50  
+            data["RSI"] = 50  # Neutral default
 
+        # Price Comparison
         prev_day_close = data["Close"].iloc[-2]
         current_close = data["Close"].iloc[-1]
 
+        # Determine Market Trend
         if (data['5_MA'].iloc[-1] > data['20_MA'].iloc[-1]) and (data["MACD"].iloc[-1] > data["MACD_signal"].iloc[-1]) and (data["RSI"].iloc[-1] > 50) and (current_close > prev_day_close):
             return "up"
         elif (data['5_MA'].iloc[-1] < data['20_MA'].iloc[-1]) and (data["MACD"].iloc[-1] < data["MACD_signal"].iloc[-1]) and (data["RSI"].iloc[-1] < 50) and (current_close < prev_day_close):
